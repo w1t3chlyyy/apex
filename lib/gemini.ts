@@ -1,4 +1,3 @@
-// lib/gemini.ts
 import { GoogleGenAI } from "@google/genai";
 
 let aiInstance: GoogleGenAI | null = null;
@@ -28,8 +27,11 @@ const DEFAULT_CHAIN = [
 
 function getModelChain(): string[] {
   const raw = process.env.GEMINI_MODEL_CHAIN;
-  const list = raw ? raw.split(",").map((m) => m.trim()).filter(Boolean) : DEFAULT_CHAIN;
-  // убираем дубли, сохраняя порядок
+  const list = raw
+    ? raw.split(",").map((m) => m.trim()).filter(Boolean)
+    : DEFAULT_CHAIN;
+  // Убираем дубли, сохраняя порядок (на случай если основная модель
+  // совпадает с одной из моделей по умолчанию в цепочке).
   return Array.from(new Set(list));
 }
 
@@ -42,8 +44,9 @@ function sleep(ms: number) {
 
 function isRetryableError(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
-  // 503 — модель перегружена, 429 — рейт-лимит. В обоих случаях
-  // имеет смысл либо ретраить, либо переключиться на следующую модель в цепочке.
+  // 503 — модель временно перегружена ("high demand"), 429 — рейт-лимит.
+  // Оба случая имеет смысл ретраить, а при исчерпании ретраев — переключаться
+  // на следующую модель в цепочке фолбеков.
   return status === 503 || status === 429;
 }
 
@@ -68,6 +71,7 @@ async function generateWithRetry(
       if (!isRetryableError(err) || attempt === MAX_RETRIES_PER_MODEL) {
         throw err;
       }
+      // Экспоненциальная пауза перед повтором: 600мс, 1200мс...
       await sleep(BASE_DELAY_MS * Math.pow(2, attempt));
     }
   }
@@ -76,9 +80,11 @@ async function generateWithRetry(
 }
 
 /**
- * Пытается сгенерировать ответ, последовательно проходя по цепочке моделей.
- * Переход к следующей модели происходит только при retryable-ошибке (503/429).
- * Любая другая ошибка (например, неверный запрос) прерывает цепочку сразу.
+ * Пытается сгенерировать ответ, последовательно проходя по цепочке моделей
+ * (GEMINI_MODEL_CHAIN или дефолтный список). Переход к следующей модели
+ * происходит только при retryable-ошибке (503/429) и исчерпании ретраев
+ * на текущей модели. Любая другая ошибка (например, невалидный запрос)
+ * прерывает цепочку сразу — переключение моделей её не исправит.
  */
 async function generateWithFallbackChain(
   contents: Array<{ role: string; parts: Array<{ text: string }> }>,
@@ -94,7 +100,7 @@ async function generateWithFallbackChain(
     try {
       const response = await generateWithRetry(ai, model, contents, systemInstruction);
       if (i > 0) {
-        console.warn(`[gemini] Ответ получен от фолбек-модели #${i + 1}: ${model}`);
+        console.warn(`[gemini] Ответ получен от резервной модели #${i + 1}: ${model}`);
       }
       return response;
     } catch (err) {
@@ -103,7 +109,7 @@ async function generateWithFallbackChain(
       const hasNext = i < chain.length - 1;
 
       if (!retryable) {
-        console.error(`[gemini] Нефатальная ошибка не подлежит фолбеку (модель ${model}):`, err);
+        console.error(`[gemini] Нефатальная для фолбека ошибка (модель ${model}):`, err);
         throw err;
       }
 
