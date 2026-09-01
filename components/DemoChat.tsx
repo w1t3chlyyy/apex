@@ -121,7 +121,16 @@ export default function DemoChat() {
           </div>
         </div>
 
-       
+        <button
+          type="button"
+          onClick={resetChat}
+          title="Сбросить диалог"
+          className="px-2.5 py-1 rounded-full text-neutral-500 hover:text-black hover:bg-neutral-200/60 transition-colors text-xs flex items-center gap-1.5"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline text-[11px] font-medium">Сброс</span>
+        </button>
+      </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30">
