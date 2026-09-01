@@ -16,11 +16,14 @@ export async function POST() {
       sessionId,
       botUsername: BOT_USERNAME,
       deepLink,
-      expiresIn: 600, // 10 minutes
+      expiresIn: 600, // 10 минут
     });
   } catch (error) {
     console.error("Error creating telegram session:", error);
-    return NextResponse.json({ error: "Failed to create session" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to create session" },
+      { status: 500 }
+    );
   }
 }
 
@@ -30,13 +33,19 @@ export async function GET(req: NextRequest) {
     const sessionId = searchParams.get("sessionId");
 
     if (!sessionId) {
-      return NextResponse.json({ error: "Session ID required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Session ID required" },
+        { status: 400 }
+      );
     }
 
     const session = await getTelegramSession(sessionId);
 
     if (!session) {
-      return NextResponse.json({ error: "Session not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Session not found" },
+        { status: 404 }
+      );
     }
 
     if (session.status === "confirmed" && session.user) {
@@ -45,10 +54,9 @@ export async function GET(req: NextRequest) {
         user: session.user,
       });
 
-      // Set auth cookie
       response.cookies.set("apex_auth_session", JSON.stringify(session.user), {
         path: "/",
-        maxAge: 60 * 60 * 24 * 30, // 30 days
+        maxAge: 60 * 60 * 24 * 30, // 30 дней
         sameSite: "lax",
         httpOnly: false,
       });
@@ -61,6 +69,9 @@ export async function GET(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error checking telegram session:", error);
-    return NextResponse.json({ error: "Failed to check session" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to check session" },
+      { status: 500 }
+    );
   }
 }
