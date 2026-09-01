@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { confirmTelegramSession, getTelegramSession } from "@/lib/session-store";
+import { registerTelegramUser } from "@/lib/telegram-registry";
 import type { AuthUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
@@ -30,6 +31,10 @@ export async function POST(req: NextRequest) {
     if (!confirmed) {
       return NextResponse.json({ error: "Failed to confirm session" }, { status: 400 });
     }
+
+    // Помечаем пользователя как "зарегистрированного", чтобы Mini App
+    // в дальнейшем пускал его без экрана "вы не авторизованы".
+    await registerTelegramUser(user);
 
     return NextResponse.json({
       success: true,
