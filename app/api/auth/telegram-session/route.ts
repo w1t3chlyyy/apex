@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createTelegramSession, getTelegramSession } from "@/lib/session-store";
 
-const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME || "HustlifyHelpBot";
+const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME || "AiApexRobot";
 
 export async function POST() {
   try {
