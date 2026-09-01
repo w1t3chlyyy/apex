@@ -1,26 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getBotConfig, updateBotConfig } from "@/lib/bot-config";
 
 export const runtime = "nodejs";
 
-// In-memory store for bot settings fallback
-let botSettings = {
-  systemPrompt: "Ты — вежливый ассистент поддержки интернет-магазина. Отвечай кратко и по делу.",
-  role: "Поддержка клиентов",
-  threshold: 0.75,
-};
-
 export async function GET() {
-  return NextResponse.json(botSettings);
+  const config = await getBotConfig();
+  return NextResponse.json({
+    systemPrompt: config.systemPrompt,
+    role: config.role,
+    threshold: config.threshold,
+  });
 }
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    botSettings = {
-      ...botSettings,
-      ...body,
-    };
-    return NextResponse.json({ success: true, settings: botSettings });
+    const config = await updateBotConfig({
+      systemPrompt: body.systemPrompt,
+      role: body.role,
+      threshold: body.threshold,
+    });
+    return NextResponse.json({
+      success: true,
+      settings: {
+        systemPrompt: config.systemPrompt,
+        role: config.role,
+        threshold: config.threshold,
+      },
+    });
   } catch (err) {
     console.error("bot settings error", err);
     return NextResponse.json({ error: "internal error" }, { status: 500 });
