@@ -20,6 +20,7 @@ import {
 import DemoChat from "@/components/DemoChat";
 import SupportContact from "@/components/SupportContact";
 import BrandLogo from "@/components/BrandLogo";
+import { buildSupportTelegramLink } from "@/lib/support";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -546,7 +547,7 @@ export default function HeroPage() {
                 <ul className="space-y-3 text-xs sm:text-sm text-neutral-700">
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>До 1 000 сообщений в месяц</span>
+                    <span>До 50 сообщений в месяц</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
@@ -563,9 +564,14 @@ export default function HeroPage() {
                 </ul>
               </div>
               <div className="pt-8">
-                <Link href="/login?plan=start" className="btn-bw-secondary w-full">
+                <a
+                  href={buildSupportTelegramLink("Старт")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-bw-secondary w-full"
+                >
                   Выбрать «Старт»
-                </Link>
+                </a>
               </div>
             </div>
 
@@ -605,12 +611,14 @@ export default function HeroPage() {
                 </ul>
               </div>
               <div className="pt-8">
-                <Link
-                  href="/login?plan=business"
+                <a
+                  href={buildSupportTelegramLink("Бизнес")}
+                  target="_blank"
+                  rel="noreferrer"
                   className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
                 >
                   Выбрать «Бизнес»
-                </Link>
+                </a>
               </div>
             </div>
 
@@ -643,7 +651,12 @@ export default function HeroPage() {
                 </ul>
               </div>
               <div className="pt-8">
-                <a href="#support" className="btn-bw-secondary w-full">
+                <a
+                  href={buildSupportTelegramLink("Enterprise")}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-bw-secondary w-full"
+                >
                   Запросить Enterprise
                 </a>
               </div>
