@@ -20,11 +20,16 @@ type TelegramUpdate = {
 
 async function sendTelegramMessage(token: string, chatId: number, text: string) {
   try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text }),
     });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.warn("[bot webhook] Ошибка при отправке сообщения:", errorData);
+    }
   } catch (err) {
     console.warn("[bot webhook] Не удалось отправить сообщение в Telegram:", err);
   }
@@ -32,13 +37,12 @@ async function sendTelegramMessage(token: string, chatId: number, text: string) 
 
 export async function POST(req: NextRequest) {
   try {
-    // Необязательная проверка: если при регистрации вебхука был передан
-    // secret_token (см. TELEGRAM_WEBHOOK_SECRET), Telegram присылает его
-    // в этом заголовке — так мы отсекаем запросы не от Telegram.
+    // Проверка secret_token (защита от поддельных запросов)
     const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
     if (expectedSecret) {
       const gotSecret = req.headers.get("x-telegram-bot-api-secret-token");
       if (gotSecret !== expectedSecret) {
+        console.warn("[bot webhook] Неверный secret_token");
         return NextResponse.json({ error: "forbidden" }, { status: 403 });
       }
     }
@@ -47,10 +51,11 @@ export async function POST(req: NextRequest) {
     const message = update.message;
 
     if (!message?.text || !message.from) {
-      // Не текстовое сообщение (стикер, фото и т.д.) — просто подтверждаем получение.
+      // Не текстовое сообщение — просто подтверждаем получение
       return NextResponse.json({ ok: true });
     }
 
+    // 🔥 ОСНОВНОЕ ИСПРАВЛЕНИЕ: получаем токен через getBotConfig()
     const config = await getBotConfig();
     if (!config.telegramToken) {
       console.warn("[bot webhook] Получен апдейт, но токен бота не сконфигурирован в /dashboard/telegram");
@@ -60,8 +65,7 @@ export async function POST(req: NextRequest) {
     const text = message.text.trim();
     const chatId = message.chat.id;
 
-    // Deep-link из /login выглядит как https://t.me/<bot>?start=auth_<sessionId>
-    // Telegram превращает такой переход в команду "/start auth_<sessionId>".
+    // Deep-link из /login: /start auth_<sessionId>
     const startMatch = text.match(/^\/start(?:@\S+)?\s+auth_([a-zA-Z0-9]+)/);
 
     if (startMatch) {
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
         await sendTelegramMessage(
           config.telegramToken,
           chatId,
-          "Ссылка для входа устарела. Обновите QR-код или ссылку на сайте (кнопка обновления рядом со статусом) и попробуйте снова."
+          "Ссылка для входа устарела. Обновите QR-код или ссылку на сайте и попробуйте снова."
         );
         return NextResponse.json({ ok: true });
       }
@@ -87,14 +91,12 @@ export async function POST(req: NextRequest) {
       };
 
       await confirmTelegramSession(sessionId, user);
-      // Помечаем пользователя как "зарегистрированного", чтобы Mini App
-      // в дальнейшем пускал его без экрана "вы не авторизованы".
       await registerTelegramUser(user);
 
       await sendTelegramMessage(
         config.telegramToken,
         chatId,
-        "Готово! Вход на сайте подтверждён — можете вернуться на вкладку с сайтом, она обновится автоматически."
+        "Готово! Вход на сайте подтверждён — вернитесь на вкладку с сайтом, она обновится автоматически."
       );
 
       return NextResponse.json({ ok: true });
@@ -104,13 +106,12 @@ export async function POST(req: NextRequest) {
       await sendTelegramMessage(
         config.telegramToken,
         chatId,
-        "Привет! Это бот для входа в личный кабинет. Чтобы авторизоваться, откройте сайт и нажмите «Перейти в Telegram-бота» на странице входа — оттуда откроется правильная ссылка с кодом входа."
+        "Привет! Это бот для входа в личный кабинет. Чтобы авторизоваться, откройте сайт и нажмите «Перейти в Telegram-бота» на странице входа."
       );
       return NextResponse.json({ ok: true });
     }
 
-    // Заглушка для остальных сообщений. Сюда в будущем можно подключить
-    // реальную RAG-логику (сейчас она работает только в демо-чате на сайте).
+    // Заглушка для остальных сообщений
     await sendTelegramMessage(
       config.telegramToken,
       chatId,
@@ -120,13 +121,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[bot webhook] error", err);
-    // Telegram ретраит доставку апдейта при ошибке — отвечаем 200, чтобы
-    // не заспамить очередь повторными попытками на уже сломанном апдейте.
     return NextResponse.json({ ok: true });
   }
 }
 
-// Telegram иногда делает проверочный GET на URL вебхука — отвечаем 200.
 export async function GET() {
   return NextResponse.json({ ok: true, message: "Telegram webhook endpoint is alive" });
 }
