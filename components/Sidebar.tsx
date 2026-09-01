@@ -61,6 +61,8 @@ export default function Sidebar() {
           </Link>
         </div>
 
+        {/* На мобиле пункты меню идут в горизонтальный скролл (flex md:flex-col).
+            shrink-0 не даёт им сплющиваться при большем числе ссылок. */}
         <nav className="flex md:flex-col gap-1.5 overflow-x-auto pb-2 md:pb-0">
           {LINKS.map((link) => {
             const Icon = link.icon;
@@ -69,7 +71,7 @@ export default function Sidebar() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`px-3.5 py-2.5 rounded-xl text-sm whitespace-nowrap transition-all flex items-center gap-3 font-medium ${
+                className={`shrink-0 px-3.5 py-2.5 rounded-xl text-sm whitespace-nowrap transition-all flex items-center gap-3 font-medium ${
                   isActive
                     ? "bg-black text-white shadow-sm"
                     : "text-neutral-700 hover:bg-neutral-100 hover:text-black"
@@ -117,4 +119,3 @@ export default function Sidebar() {
     </aside>
   );
 }
-
