@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
 import { verifyTelegramInitData } from "@/lib/telegram-auth";
-import type { AuthUser } from "@/lib/auth";
+import { findRegisteredTelegramUser } from "@/lib/telegram-registry";
 
 export const runtime = "nodejs";
 
@@ -13,7 +12,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "initData required" }, { status: 400 });
     }
 
-    let parsed = null;
+    let parsed: { user: { id: number; username?: string; first_name?: string } } | null = null;
+
     if (process.env.TELEGRAM_SERVICE_BOT_TOKEN) {
       parsed = verifyTelegramInitData(initData, process.env.TELEGRAM_SERVICE_BOT_TOKEN);
     }
@@ -36,34 +36,14 @@ export async function POST(req: NextRequest) {
     }
 
     const telegramId = parsed.user.id;
-    const username = parsed.user.username;
-    const firstName = parsed.user.first_name || "Telegram User";
 
-    const user: AuthUser = {
-      id: `tg_${telegramId}`,
-      name: firstName,
-      telegramUsername: username,
-      telegramId: telegramId,
-      authMethod: "telegram_miniapp",
-      createdAt: new Date().toISOString(),
-    };
+    // Важно: здесь мы НЕ создаём нового пользователя. Mini App лишь проверяет,
+    // подтверждал ли этот telegram_id вход через бота/сайт ранее. Если нет —
+    // возвращаем 404, и UI показывает экран "вы не авторизованы" с кнопкой регистрации.
+    const user = await findRegisteredTelegramUser(telegramId);
 
-    try {
-      if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        const supabase = createServiceClient();
-        await supabase
-          .from("profiles")
-          .upsert(
-            {
-              telegram_id: telegramId,
-              username: username ?? null,
-              first_name: firstName ?? null,
-            },
-            { onConflict: "telegram_id" }
-          );
-      }
-    } catch {
-      // Fallback
+    if (!user) {
+      return NextResponse.json({ error: "not_registered" }, { status: 404 });
     }
 
     const response = NextResponse.json({ success: true, user, profile: user });
@@ -81,5 +61,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
 }
-
-
