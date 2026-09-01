@@ -235,7 +235,7 @@ function LoginForm() {
 
       {/* Main Auth Card */}
       <main className="max-w-md w-full mx-auto my-auto py-8">
-        <div className="bg-white border border-neutral-200 rounded-3xl p-6 md:p-8 shadow-sm">
+        <div className="bg-white border border-neutral-200 rounded-3xl p-5 sm:p-6 md:p-8 shadow-sm">
           {/* Card Header */}
           <div className="text-center mb-8">
             <h1 className="font-heading text-2xl md:text-3xl font-light tracking-tight text-black">
@@ -550,4 +550,3 @@ export default function LoginPage() {
     </Suspense>
   );
 }
-
