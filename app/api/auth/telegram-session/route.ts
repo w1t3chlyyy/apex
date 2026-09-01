@@ -7,7 +7,7 @@ const BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME || "AiApexRobot";
 export async function POST() {
   try {
     const sessionId = crypto.randomBytes(16).toString("hex");
-    createTelegramSession(sessionId);
+    await createTelegramSession(sessionId);
 
     const deepLink = `https://t.me/${BOT_USERNAME}?start=auth_${sessionId}`;
 
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Session ID required" }, { status: 400 });
     }
 
-    const session = getTelegramSession(sessionId);
+    const session = await getTelegramSession(sessionId);
 
     if (!session) {
       return NextResponse.json({ error: "Session not found" }, { status: 404 });
