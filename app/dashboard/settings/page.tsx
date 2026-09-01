@@ -98,7 +98,8 @@ export default function SettingsPage() {
             className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-black"
           />
           
-          <div className="flex justify-between text-[11px] text-neutral-500 mt-1 font-mono">
+          {/* flex-wrap + gap не даёт подписям переноситься криво на очень узких экранах */}
+          <div className="flex flex-wrap justify-between gap-1 text-[11px] text-neutral-500 mt-1 font-mono">
             <span>0.50 (Больше свободы)</span>
             <span>0.75 (Рекомендуемый баланс)</span>
             <span>0.95 (Строго по базе)</span>
