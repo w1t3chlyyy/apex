@@ -31,7 +31,7 @@ function LoginForm() {
   // Telegram session state
   const [tgSessionId, setTgSessionId] = useState<string | null>(null);
   const [tgDeepLink, setTgDeepLink] = useState<string>("");
-  const [tgBotUsername, setTgBotUsername] = useState<string>("HustlifyHelpBot");
+  const [tgBotUsername, setTgBotUsername] = useState<string>("AiApexRobot");
   const [tgStatus, setTgStatus] = useState<"loading" | "waiting" | "success">("loading");
   const [showQr, setShowQr] = useState(false);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
