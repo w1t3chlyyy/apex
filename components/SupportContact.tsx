@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Check,
 } from "lucide-react";
+import { buildSupportTelegramLink } from "@/lib/support";
 
 export default function SupportContact() {
   const [name, setName] = useState("");
@@ -53,7 +54,7 @@ export default function SupportContact() {
           <div className="mt-6 space-y-3">
             {/* Telegram Support Button */}
             <a
-              href="https://t.me/telegram"
+              href={buildSupportTelegramLink()}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 border border-neutral-200 hover:border-black group transition-all"
