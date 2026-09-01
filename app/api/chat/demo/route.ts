@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGeminiModel } from "@/lib/gemini";
+import { generateDemoChatResponse } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 
@@ -15,23 +15,7 @@ export async function POST(req: NextRequest) {
     // Здесь дополнительно ограничиваем длину истории, отправляемой в модель.
     const history = messages.slice(-10);
 
-    const model = getGeminiModel();
-    const systemInstruction =
-      "Ты демо-версия ИИ-ассистента для Telegram Business. Отвечай кратко, дружелюбно, " +
-      "на русском языке, и предлагай пользователю зарегистрироваться, чтобы подключить " +
-      "своего собственного ассистента.";
-
-    const chat = model.startChat({
-      history: history.slice(0, -1).map((m: { role: string; content: string }) => ({
-        role: m.role === "assistant" ? "model" : "user",
-        parts: [{ text: m.content }],
-      })),
-      systemInstruction,
-    });
-
-    const lastMessage = history[history.length - 1].content;
-    const result = await chat.sendMessage(lastMessage);
-    const reply = result.response.text();
+    const reply = await generateDemoChatResponse(history);
 
     return NextResponse.json({ reply });
   } catch (err) {
@@ -39,3 +23,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
 }
+

@@ -9,27 +9,22 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        background: "#090D16",
-        surface: "#0F1420",
-        surfaceHover: "#151B2B",
-        border: "#1E2536",
-        accent: {
-          DEFAULT: "#10B981",
-          light: "#22C55E",
-          dark: "#0E9F71",
-        },
+        background: "#000000",
+        surface: "#0A0A0A",
+        surfaceHover: "#171717",
+        border: "#262626",
         foreground: "#FFFFFF",
-        muted: "#8B93A7",
+        muted: "#A3A3A3",
       },
       borderRadius: {
         xl: "1rem",
         "2xl": "1.25rem",
-      },
-      boxShadow: {
-        glow: "0 0 40px rgba(16, 185, 129, 0.15)",
+        "3xl": "1.5rem",
       },
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        sans: ["var(--font-montserrat)", "Montserrat", "system-ui", "-apple-system", "sans-serif"],
+        heading: ["var(--font-unbounded)", "Unbounded", "system-ui", "sans-serif"],
+        display: ["var(--font-unbounded)", "Unbounded", "system-ui", "sans-serif"],
       },
     },
   },

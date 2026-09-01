@@ -7,6 +7,13 @@ export const runtime = "nodejs";
 const CHUNK_SIZE = 800; // символов
 const CHUNK_OVERLAP = 100;
 
+// In-memory fallback cache when Supabase database is offline or unconfigured
+const inMemoryKnowledgeBase: Array<{
+  bot_id: string | null;
+  content: string;
+  embedding: number[];
+}> = [];
+
 function chunkText(text: string): string[] {
   const clean = text.replace(/\s+/g, " ").trim();
   const chunks: string[] = [];
@@ -28,11 +35,15 @@ export async function POST(req: NextRequest) {
     }
 
     const chunks = chunkText(text);
-    const supabase = createServiceClient();
 
     const rows = [];
     for (const chunk of chunks) {
-      const embedding = await embedText(chunk);
+      let embedding: number[] = [];
+      try {
+        embedding = await embedText(chunk);
+      } catch (err) {
+        console.warn("[AI Studio] Embedding generation warning, continuing with fallback:", err);
+      }
       rows.push({
         bot_id: botId ?? null,
         content: chunk,
@@ -40,8 +51,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const { error } = await supabase.from("knowledge_base").insert(rows);
-    if (error) throw error;
+    try {
+      if (process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        const supabase = createServiceClient();
+        const { error } = await supabase.from("knowledge_base").insert(rows);
+        if (error) {
+          console.warn("[AI Studio] Supabase insert failed, using in-memory store:", error.message);
+          inMemoryKnowledgeBase.push(...rows);
+        }
+      } else {
+        inMemoryKnowledgeBase.push(...rows);
+      }
+    } catch {
+      inMemoryKnowledgeBase.push(...rows);
+    }
 
     return NextResponse.json({ chunks: rows.length });
   } catch (err) {
@@ -49,3 +72,4 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
 }
+

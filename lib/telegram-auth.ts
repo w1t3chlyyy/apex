@@ -12,8 +12,9 @@ type TelegramUser = {
  */
 export function verifyTelegramInitData(
   initData: string,
-  botToken: string
+  botToken?: string
 ): { user: TelegramUser } | null {
+  if (!botToken) return null;
   const params = new URLSearchParams(initData);
   const hash = params.get("hash");
   if (!hash) return null;
