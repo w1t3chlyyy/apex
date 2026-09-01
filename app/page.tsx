@@ -460,57 +460,64 @@ export default function HeroPage() {
             </p>
           </div>
 
+          {/* На мобильных экранах 3 колонки таблицы сжимались и текст переносился
+              криво. Теперь таблица имеет фиксированную минимальную ширину и
+              скроллится по горизонтали внутри карточки, а не ломает вёрстку. */}
           <div className="card-bw overflow-hidden bg-white">
-            <div className="grid grid-cols-3 p-4 md:p-6 border-b border-neutral-200 bg-neutral-100/70 font-semibold text-xs md:text-sm text-black">
-              <div>Параметр</div>
-              <div className="text-center">AI Ассистент</div>
-              <div className="text-center text-neutral-500">Штатный сотрудник</div>
-            </div>
-
-            <div className="divide-y divide-neutral-100 text-xs md:text-sm">
-              <div className="grid grid-cols-3 p-4 md:p-5 items-center">
-                <div className="font-medium text-black">Скорость ответа</div>
-                <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  &lt; 1 секунды
+            <div className="overflow-x-auto">
+              <div className="min-w-[560px]">
+                <div className="grid grid-cols-3 p-4 md:p-6 border-b border-neutral-200 bg-neutral-100/70 font-semibold text-xs md:text-sm text-black">
+                  <div>Параметр</div>
+                  <div className="text-center">AI Ассистент</div>
+                  <div className="text-center text-neutral-500">Штатный сотрудник</div>
                 </div>
-                <div className="text-center text-neutral-500">5 – 30 минут</div>
-              </div>
 
-              <div className="grid grid-cols-3 p-4 md:p-5 items-center bg-neutral-50/50">
-                <div className="font-medium text-black">Режим работы</div>
-                <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  24/7/365 без пауз
-                </div>
-                <div className="text-center text-neutral-500">8ч в будни + отпуска</div>
-              </div>
+                <div className="divide-y divide-neutral-100 text-xs md:text-sm">
+                  <div className="grid grid-cols-3 p-4 md:p-5 items-center">
+                    <div className="font-medium text-black">Скорость ответа</div>
+                    <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      &lt; 1 секунды
+                    </div>
+                    <div className="text-center text-neutral-500">5 – 30 минут</div>
+                  </div>
 
-              <div className="grid grid-cols-3 p-4 md:p-5 items-center">
-                <div className="font-medium text-black">Стоимость в месяц</div>
-                <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  от 1 490 ₽
-                </div>
-                <div className="text-center text-neutral-500">от 50 000 ₽</div>
-              </div>
+                  <div className="grid grid-cols-3 p-4 md:p-5 items-center bg-neutral-50/50">
+                    <div className="font-medium text-black">Режим работы</div>
+                    <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      24/7/365 без пауз
+                    </div>
+                    <div className="text-center text-neutral-500">8ч в будни + отпуска</div>
+                  </div>
 
-              <div className="grid grid-cols-3 p-4 md:p-5 items-center bg-neutral-50/50">
-                <div className="font-medium text-black">Параллельные диалоги</div>
-                <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  Неограниченно
-                </div>
-                <div className="text-center text-neutral-500">1 – 2 диалога</div>
-              </div>
+                  <div className="grid grid-cols-3 p-4 md:p-5 items-center">
+                    <div className="font-medium text-black">Стоимость в месяц</div>
+                    <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      от 1 490 ₽
+                    </div>
+                    <div className="text-center text-neutral-500">от 50 000 ₽</div>
+                  </div>
 
-              <div className="grid grid-cols-3 p-4 md:p-5 items-center">
-                <div className="font-medium text-black">Соблюдение регламентов</div>
-                <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-black" />
-                  100% точно по RAG
+                  <div className="grid grid-cols-3 p-4 md:p-5 items-center bg-neutral-50/50">
+                    <div className="font-medium text-black">Параллельные диалоги</div>
+                    <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      Неограниченно
+                    </div>
+                    <div className="text-center text-neutral-500">1 – 2 диалога</div>
+                  </div>
+
+                  <div className="grid grid-cols-3 p-4 md:p-5 items-center">
+                    <div className="font-medium text-black">Соблюдение регламентов</div>
+                    <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-black" />
+                      100% точно по RAG
+                    </div>
+                    <div className="text-center text-neutral-500">Человеческий фактор</div>
+                  </div>
                 </div>
-                <div className="text-center text-neutral-500">Человеческий фактор</div>
               </div>
             </div>
           </div>
