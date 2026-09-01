@@ -21,7 +21,12 @@ export default function DemoChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(0);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // Скроллим ТОЛЬКО внутренний контейнер сообщений (не window/document).
+  // Раньше здесь использовался bottomRef + scrollIntoView(), который скроллит
+  // ВСЕ скроллируемые предки элемента, включая саму страницу — из-за этого
+  // при заходе на сайт страница резко "улетала" вниз к этой секции.
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isFirstRender = useRef(true);
 
   useEffect(() => {
     const savedMessages = localStorage.getItem(STORAGE_KEY);
@@ -40,7 +45,20 @@ export default function DemoChat() {
   }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // На первом рендере (в т.ч. после подгрузки истории из localStorage)
+    // не скроллим вообще — просто открываем чат в естественном состоянии.
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      container.scrollTop = container.scrollHeight;
+      return;
+    }
+
+    // На последующих обновлениях (новое сообщение/ответ) — плавно скроллим
+    // именно этот div, а не всю страницу.
+    container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
   const limitReached = count >= MAX_MESSAGES;
@@ -96,7 +114,10 @@ export default function DemoChat() {
   ];
 
   return (
-    <div className="flex flex-col h-[520px] bg-white border border-neutral-200 rounded-3xl shadow-xl overflow-hidden" id="demo-chat-container">
+    <div
+      className="flex flex-col h-[70vh] max-h-[560px] min-h-[380px] sm:h-[520px] bg-white border border-neutral-200 rounded-3xl shadow-xl overflow-hidden"
+      id="demo-chat-container"
+    >
       {/* Top Chat Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50/80">
         <div className="flex items-center gap-3">
@@ -133,7 +154,10 @@ export default function DemoChat() {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30 overscroll-contain"
+      >
         {messages.map((m, i) => {
           const isUser = m.role === "user";
           return (
@@ -165,7 +189,6 @@ export default function DemoChat() {
             <span>AI генерирует ответ на основе базы знаний...</span>
           </div>
         )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Quick suggestions */}
@@ -176,7 +199,7 @@ export default function DemoChat() {
               key={prompt}
               type="button"
               onClick={() => sendMessage(prompt)}
-              className="text-[11px] px-3 py-1.5 rounded-full bg-neutral-100 text-neutral-700 hover:bg-black hover:text-white whitespace-nowrap transition-colors"
+              className="text-[11px] px-3 py-1.5 rounded-full bg-neutral-100 text-neutral-700 hover:bg-black hover:text-white whitespace-nowrap transition-colors shrink-0"
             >
               {prompt}
             </button>
