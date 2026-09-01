@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Session ID required" }, { status: 400 });
     }
 
-    const existingSession = getTelegramSession(sessionId);
+    const existingSession = await getTelegramSession(sessionId);
     if (!existingSession) {
       return NextResponse.json({ error: "Session expired or not found" }, { status: 404 });
     }
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
       createdAt: new Date().toISOString(),
     };
 
-    const confirmed = confirmTelegramSession(sessionId, user);
+    const confirmed = await confirmTelegramSession(sessionId, user);
     if (!confirmed) {
       return NextResponse.json({ error: "Failed to confirm session" }, { status: 400 });
     }
