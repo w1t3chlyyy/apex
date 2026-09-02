@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { embedText } from "@/lib/gemini";
+import { getCurrentUserFromRequest } from "@/lib/current-user";
+import { getBotByOwner } from "@/lib/bots";
 
 export const runtime = "nodejs";
 
 const CHUNK_SIZE = 800; // символов
 const CHUNK_OVERLAP = 100;
 
-// In-memory fallback cache when Supabase database is offline or unconfigured
+// In-memory fallback-кэш когда Supabase недоступен/не настроен
 const inMemoryKnowledgeBase: Array<{
   bot_id: string | null;
   content: string;
@@ -28,11 +30,27 @@ function chunkText(text: string): string[] {
 
 export async function POST(req: NextRequest) {
   try {
-    const { text, botId } = await req.json();
+    const user = getCurrentUserFromRequest(req);
+    if (!user) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    }
 
+    const { text } = await req.json();
     if (!text || typeof text !== "string") {
       return NextResponse.json({ error: "text required" }, { status: 400 });
     }
+
+    // База знаний ВСЕГДА привязывается к боту текущего пользователя.
+    // Раньше botId принимался из тела запроса, что теоретически позволяло
+    // писать в чужую базу знаний — теперь это невозможно.
+    const bot = await getBotByOwner(user.id);
+    if (!bot) {
+      return NextResponse.json(
+        { error: "Сначала подключите своего Telegram-бота в разделе «Telegram Business»" },
+        { status: 400 }
+      );
+    }
+    const botId = bot.id;
 
     const chunks = chunkText(text);
 
@@ -42,10 +60,10 @@ export async function POST(req: NextRequest) {
       try {
         embedding = await embedText(chunk);
       } catch (err) {
-        console.warn("[AI Studio] Embedding generation warning, continuing with fallback:", err);
+        console.warn("[RAG] Embedding generation warning, continuing with fallback:", err);
       }
       rows.push({
-        bot_id: botId ?? null,
+        bot_id: botId,
         content: chunk,
         embedding,
       });
@@ -56,7 +74,7 @@ export async function POST(req: NextRequest) {
         const supabase = createServiceClient();
         const { error } = await supabase.from("knowledge_base").insert(rows);
         if (error) {
-          console.warn("[AI Studio] Supabase insert failed, using in-memory store:", error.message);
+          console.warn("[RAG] Supabase insert failed, using in-memory store:", error.message);
           inMemoryKnowledgeBase.push(...rows);
         }
       } else {
@@ -66,10 +84,9 @@ export async function POST(req: NextRequest) {
       inMemoryKnowledgeBase.push(...rows);
     }
 
-    return NextResponse.json({ chunks: rows.length });
+    return NextResponse.json({ chunks: rows.length, botId });
   } catch (err) {
     console.error("rag ingest error", err);
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
 }
-
