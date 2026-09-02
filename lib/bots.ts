@@ -2,12 +2,12 @@ import { createServiceClient } from "./supabase/server";
 
 /**
  * Бот-агент КОНКРЕТНОГО пользователя личного кабинета (не путать с сервисным
- * ботом авторизации — тот один на весь сервис и хранится в .env как
- * TELEGRAM_SERVICE_BOT_TOKEN, к этому файлу отношения не имеет).
+ * ботом авторизации/админ-панели — тот один на весь сервис, хранится в .env
+ * как TELEGRAM_SERVICE_BOT_TOKEN, к этому файлу отношения не имеет).
  *
- * Раньше эта сущность ошибочно хранилась в singleton-таблице bot_config
- * (см. lib/bot-config.ts) — одна строка на весь сервис. Теперь у каждого
- * пользователя своя строка в таблице `bots`, найти её можно по owner_id.
+ * Добавлены поля ежемесячной подписки (planId + даты начала/окончания) —
+ * управляются из /dashboard/billing и из админ-панели служебного бота
+ * (см. lib/admin.ts, lib/subscriptions.ts).
  */
 export interface UserBot {
   id: string;
@@ -19,6 +19,9 @@ export interface UserBot {
   confidenceThreshold: number;
   businessConnectionId: string | null;
   webhookRegistered: boolean;
+  planId: string | null;
+  subscriptionStartedAt: string | null;
+  subscriptionExpiresAt: string | null;
 }
 
 const DEFAULTS = {
@@ -28,8 +31,6 @@ const DEFAULTS = {
   confidenceThreshold: 0.75,
 };
 
-// In-memory fallback — как и в остальных lib/*-store.ts файлах проекта,
-// используется только для локальной разработки без Supabase.
 const globalStore = globalThis as unknown as {
   __apexUserBots?: Map<string, UserBot>; // ключ = ownerId
 };
@@ -44,7 +45,6 @@ function supabaseConfigured() {
   );
 }
 
-// Строка из таблицы `bots` в Supabase (snake_case-поля).
 interface BotRow {
   id: string;
   owner_id: string;
@@ -55,6 +55,9 @@ interface BotRow {
   confidence_threshold?: number | null;
   business_connection_id?: string | null;
   webhook_registered?: boolean | null;
+  plan_id?: string | null;
+  subscription_started_at?: string | null;
+  subscription_expires_at?: string | null;
 }
 
 function rowToBot(row: BotRow): UserBot {
@@ -71,6 +74,9 @@ function rowToBot(row: BotRow): UserBot {
         : DEFAULTS.confidenceThreshold,
     businessConnectionId: row.business_connection_id ?? null,
     webhookRegistered: Boolean(row.webhook_registered),
+    planId: row.plan_id ?? null,
+    subscriptionStartedAt: row.subscription_started_at ?? null,
+    subscriptionExpiresAt: row.subscription_expires_at ?? null,
   };
 }
 
@@ -119,6 +125,9 @@ interface BotPatch {
   confidenceThreshold?: number;
   businessConnectionId?: string | null;
   webhookRegistered?: boolean;
+  planId?: string | null;
+  subscriptionStartedAt?: string | null;
+  subscriptionExpiresAt?: string | null;
 }
 
 export async function upsertBotForOwner(
@@ -154,6 +163,15 @@ export async function upsertBotForOwner(
       patch.webhookRegistered !== undefined
         ? patch.webhookRegistered
         : existing?.webhookRegistered ?? false,
+    planId: patch.planId !== undefined ? patch.planId : existing?.planId ?? null,
+    subscriptionStartedAt:
+      patch.subscriptionStartedAt !== undefined
+        ? patch.subscriptionStartedAt
+        : existing?.subscriptionStartedAt ?? null,
+    subscriptionExpiresAt:
+      patch.subscriptionExpiresAt !== undefined
+        ? patch.subscriptionExpiresAt
+        : existing?.subscriptionExpiresAt ?? null,
   };
 
   memory.set(ownerId, next);
@@ -172,6 +190,9 @@ export async function upsertBotForOwner(
           confidence_threshold: next.confidenceThreshold,
           business_connection_id: next.businessConnectionId,
           webhook_registered: next.webhookRegistered,
+          plan_id: next.planId,
+          subscription_started_at: next.subscriptionStartedAt,
+          subscription_expires_at: next.subscriptionExpiresAt,
         },
         { onConflict: "id" }
       );
