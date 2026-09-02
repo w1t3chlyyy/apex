@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateDemoChatResponse } from "@/lib/gemini";
+import { generateDemoChatResponse } from "@/lib/qwen";
 
 export const runtime = "nodejs";
 
@@ -19,18 +19,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ reply });
   } catch (err) {
-    const status = (err as { status?: number })?.status;
     console.error("demo chat error", err);
-
-    // 503/429 от Gemini — модель временно перегружена. Отдаём дружелюбный ответ
-    // вместо технической ошибки, чат при этом не падает на клиенте.
-    if (status === 503 || status === 429) {
-      return NextResponse.json({
-        reply:
-          "Сейчас ИИ-модель немного перегружена — попробуйте задать вопрос ещё раз через несколько секунд 🙏",
-      });
-    }
-
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }
 }
