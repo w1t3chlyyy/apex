@@ -1,16 +1,34 @@
 "use client";
 
-import { useState } from "react";
-import { Sliders, Save, CheckCircle2, Shield, MessageSquare, HelpCircle, Sparkles } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Sliders, Save, CheckCircle2, Shield, MessageSquare, Loader2 } from "lucide-react";
+
+const DEFAULT_PROMPT =
+  "Ты — вежливый и компетентный ассистент компании. Отвечай точно по предоставленной базе знаний, помогай клиентам с выбором и оформлением заявок. Если информации недостаточно, предложи позвать старшего менеджера.";
+const DEFAULT_ROLE = "Эксперт по продажам и клиентской поддержке";
 
 export default function SettingsPage() {
-  const [systemPrompt, setSystemPrompt] = useState(
-    "Ты — вежливый и компетентный ассистент компании. Отвечай точно по предоставленной базе знаний, помогай клиентам с выбором и оформлением заявок. Если информации недостаточно, предложи позвать старшего менеджера."
-  );
-  const [role, setRole] = useState("Эксперт по продажам и клиентской поддержке");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [role, setRole] = useState("");
   const [threshold, setThreshold] = useState(0.75);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/bot/settings")
+      .then((res) => res.json())
+      .then((data) => {
+        setSystemPrompt(data.systemPrompt || DEFAULT_PROMPT);
+        setRole(data.role || DEFAULT_ROLE);
+        setThreshold(typeof data.threshold === "number" ? data.threshold : 0.75);
+      })
+      .catch(() => {
+        setSystemPrompt(DEFAULT_PROMPT);
+        setRole(DEFAULT_ROLE);
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
   async function save() {
     setSaving(true);
@@ -28,6 +46,14 @@ export default function SettingsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <Loader2 className="w-6 h-6 animate-spin text-neutral-400" />
+      </div>
+    );
   }
 
   return (
@@ -87,7 +113,7 @@ export default function SettingsPage() {
               {threshold.toFixed(2)}
             </span>
           </div>
-          
+
           <input
             type="range"
             min={0.5}
@@ -97,16 +123,16 @@ export default function SettingsPage() {
             onChange={(e) => setThreshold(parseFloat(e.target.value))}
             className="w-full h-2 bg-neutral-200 rounded-lg appearance-none cursor-pointer accent-black"
           />
-          
-          {/* flex-wrap + gap не даёт подписям переноситься криво на очень узких экранах */}
+
           <div className="flex flex-wrap justify-between gap-1 text-[11px] text-neutral-500 mt-1 font-mono">
             <span>0.50 (Больше свободы)</span>
             <span>0.75 (Рекомендуемый баланс)</span>
             <span>0.95 (Строго по базе)</span>
           </div>
-          
+
           <p className="text-xs text-neutral-600 mt-2 bg-neutral-50 p-3 rounded-xl border border-neutral-200">
-            Если семантическое соответствие найденного ответа в базе знаний ниже {threshold.toFixed(2)}, бот не фантазирует, а отправляет вежливое уведомление и передает диалог живому менеджеру.
+            Если семантическое соответствие найденного ответа в базе знаний ниже {threshold.toFixed(2)}, бот не
+            фантазирует, а отправляет вежливое уведомление и передает диалог живому менеджеру.
           </p>
         </div>
 
