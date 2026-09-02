@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, UploadCloud, CheckCircle2, AlertCircle, FileText, Loader2, Info, Check } from "lucide-react";
+import { UploadCloud, CheckCircle2, AlertCircle, FileText, Loader2, Info } from "lucide-react";
 
 export default function KnowledgeBasePage() {
   const [text, setText] = useState("");
@@ -21,7 +21,16 @@ export default function KnowledgeBasePage() {
         body: JSON.stringify({ text }),
       });
       const data = await res.json();
-      setStatus(`Успешно векторизовано и добавлено ${data.chunks ?? 1} фрагментов в базу знаний.`);
+
+      // Раньше здесь не проверялся res.ok — при ошибке (например, бот ещё
+      // не подключён) пользователь всё равно видел "Успешно" сообщение.
+      if (!res.ok || data.error) {
+        setIsError(true);
+        setStatus(data.error || "Ошибка при векторизации. Попробуйте ещё раз.");
+        return;
+      }
+
+      setStatus(`Успешно векторизовано и добавлено ${data.chunks ?? 1} фрагментов в базу знаний вашего бота.`);
       setText("");
     } catch {
       setIsError(true);
@@ -48,7 +57,9 @@ export default function KnowledgeBasePage() {
           <div className="text-xs sm:text-sm text-neutral-700 leading-relaxed">
             <p className="font-semibold text-black mb-1">Как работает поиск по базе знаний?</p>
             <p>
-              Любой загруженный текст автоматически разбивается на семантические блоки и преобразуется в векторные эмбеддинги. Когда клиент задаёт вопрос в Telegram, ассистент мгновенно находит релевантный фрагмент и формулирует точный ответ.
+              Любой загруженный текст автоматически разбивается на семантические блоки и преобразуется в
+              векторные эмбеддинги, привязанные к вашему боту. Когда клиент задаёт вопрос в Telegram, ассистент
+              мгновенно находит релевантный фрагмент и формулирует точный ответ.
             </p>
           </div>
         </div>
