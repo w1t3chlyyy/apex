@@ -8,6 +8,7 @@ import {
   Sliders,
   BookOpen,
   Send,
+  CreditCard,
   ArrowLeft,
   LogOut,
   User,
@@ -20,6 +21,7 @@ const LINKS = [
   { href: "/dashboard/settings", label: "Настройки бота", icon: Sliders },
   { href: "/dashboard/knowledge-base", label: "База знаний", icon: BookOpen },
   { href: "/dashboard/telegram", label: "Telegram Business", icon: Send },
+  { href: "/dashboard/billing", label: "Подписка", icon: CreditCard },
 ];
 
 export default function Sidebar() {
@@ -61,8 +63,6 @@ export default function Sidebar() {
           </Link>
         </div>
 
-        {/* На мобиле пункты меню идут в горизонтальный скролл (flex md:flex-col).
-            shrink-0 не даёт им сплющиваться при большем числе ссылок. */}
         <nav className="flex md:flex-col gap-1.5 overflow-x-auto pb-2 md:pb-0">
           {LINKS.map((link) => {
             const Icon = link.icon;
@@ -86,7 +86,6 @@ export default function Sidebar() {
       </div>
 
       <div className="pt-4 border-t border-neutral-200 px-2 space-y-3">
-        {/* User Card */}
         {user ? (
           <div className="flex items-center justify-between gap-2 p-2 bg-neutral-50 rounded-xl border border-neutral-100">
             <div className="flex items-center gap-2 overflow-hidden">
