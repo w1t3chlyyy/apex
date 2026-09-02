@@ -36,8 +36,14 @@ export function setClientUser(user: AuthUser | null) {
     document.cookie = `${COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
   } else {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    // ВАЖНО: раньше сюда писалась урезанная версия пользователя
+    // ({ id, name, authMethod }), которая ЗАТИРАЛА полную cookie, уже
+    // установленную сервером в ответе на /api/auth/*. Это не ломало
+    // привязку бота (id оставался тем же), но теряло email/telegramId
+    // на клиенте до следующего запроса к /api/auth/session. Пишем теперь
+    // тот же полный объект, что вернул сервер.
     document.cookie = `${COOKIE_NAME}=${encodeURIComponent(
-      JSON.stringify({ id: user.id, name: user.name, authMethod: user.authMethod })
+      JSON.stringify(user)
     )}; Path=/; Max-Age=2592000; SameSite=Lax`;
   }
 }
