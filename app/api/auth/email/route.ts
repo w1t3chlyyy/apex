@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import type { AuthUser } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
@@ -25,11 +26,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Неверный код подтверждения. Попробуйте 7742" }, { status: 400 });
     }
 
-    const emailName = email.split("@")[0];
+    const normalizedEmail = email.toLowerCase().trim();
+    const emailName = normalizedEmail.split("@")[0];
+
+    // ВАЖНО: раньше ID генерировался как `usr_${Date.now()}` — то есть при
+    // КАЖДОМ повторном входе по этому же email создавался НОВЫЙ пользователь
+    // с чистого листа, и весь ранее настроенный бот/база знаний оказывались
+    // "потеряны" (на самом деле остались привязаны к старому ID, которого
+    // больше никто не спрашивал). Теперь ID стабильный — детерминированный
+    // хэш от email, один и тот же при каждом входе.
+    const stableId = `usr_${crypto
+      .createHash("sha256")
+      .update(normalizedEmail)
+      .digest("hex")
+      .slice(0, 24)}`;
+
     const user: AuthUser = {
-      id: `usr_${Date.now()}`,
+      id: stableId,
       name: name?.trim() || emailName.charAt(0).toUpperCase() + emailName.slice(1),
-      email: email.toLowerCase().trim(),
+      email: normalizedEmail,
       authMethod: "email",
       createdAt: new Date().toISOString(),
     };
