@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { embedText } from "@/lib/gemini";
+import { embedText } from "@/lib/qwen";
 import { getCurrentUserFromRequest } from "@/lib/current-user";
 import { getBotByOwner } from "@/lib/bots";
 
@@ -41,8 +41,6 @@ export async function POST(req: NextRequest) {
     }
 
     // База знаний ВСЕГДА привязывается к боту текущего пользователя.
-    // Раньше botId принимался из тела запроса, что теоретически позволяло
-    // писать в чужую базу знаний — теперь это невозможно.
     const bot = await getBotByOwner(user.id);
     if (!bot) {
       return NextResponse.json(
@@ -60,7 +58,7 @@ export async function POST(req: NextRequest) {
       try {
         embedding = await embedText(chunk);
       } catch (err) {
-        console.warn("[RAG] Embedding generation warning, continuing with fallback:", err);
+        console.warn("[RAG] Embedding generation warning (Qwen), continuing with fallback:", err);
       }
       rows.push({
         bot_id: botId,
