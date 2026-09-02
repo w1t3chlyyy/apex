@@ -123,7 +123,6 @@ type BotPatch = Partial
     | "webhookRegistered"
   >
 >;
-
 export async function upsertBotForOwner(
   ownerId: string,
   patch: BotPatch
