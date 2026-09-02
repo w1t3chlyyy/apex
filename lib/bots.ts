@@ -111,20 +111,22 @@ export async function getBotById(botId: string): Promise<UserBot | null> {
   return null;
 }
 
+type BotPatch = Partial
+  Pick
+    UserBot,
+    | "ownerTelegramId"
+    | "botApiToken"
+    | "systemPrompt"
+    | "role"
+    | "confidenceThreshold"
+    | "businessConnectionId"
+    | "webhookRegistered"
+  >
+>;
+
 export async function upsertBotForOwner(
   ownerId: string,
-  patch: Partial
-    Pick
-      UserBot,
-      | "ownerTelegramId"
-      | "botApiToken"
-      | "systemPrompt"
-      | "role"
-      | "confidenceThreshold"
-      | "businessConnectionId"
-      | "webhookRegistered"
-    >
-  >
+  patch: BotPatch
 ): Promise<UserBot> {
   const existing = await getBotByOwner(ownerId);
   const id = existing?.id ?? `bot_${ownerId}_${Date.now()}`;
