@@ -45,7 +45,7 @@ function supabaseConfigured() {
 }
 
 // Строка из таблицы `bots` в Supabase (snake_case-поля).
-type BotRow = {
+interface BotRow {
   id: string;
   owner_id: string;
   owner_telegram_id?: number | null;
@@ -55,7 +55,7 @@ type BotRow = {
   confidence_threshold?: number | null;
   business_connection_id?: string | null;
   webhook_registered?: boolean | null;
-};
+}
 
 function rowToBot(row: BotRow): UserBot {
   return {
@@ -111,18 +111,16 @@ export async function getBotById(botId: string): Promise<UserBot | null> {
   return null;
 }
 
-type BotPatch = Partial
-  Pick
-    UserBot,
-    | "ownerTelegramId"
-    | "botApiToken"
-    | "systemPrompt"
-    | "role"
-    | "confidenceThreshold"
-    | "businessConnectionId"
-    | "webhookRegistered"
-  >
->;
+interface BotPatch {
+  ownerTelegramId?: number | null;
+  botApiToken?: string | null;
+  systemPrompt?: string;
+  role?: string;
+  confidenceThreshold?: number;
+  businessConnectionId?: string | null;
+  webhookRegistered?: boolean;
+}
+
 export async function upsertBotForOwner(
   ownerId: string,
   patch: BotPatch
