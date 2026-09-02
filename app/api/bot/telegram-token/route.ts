@@ -77,6 +77,17 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             url: webhookUrl,
             secret_token: process.env.TELEGRAM_WEBHOOK_SECRET || undefined,
+            // КРИТИЧНО: без явного allowed_updates Telegram НЕ присылает
+            // события Telegram Business (business_connection/business_message
+            // и т.д.) на вебхук — они не входят в набор обновлений по
+            // умолчанию. Из-за этого бот "не видел" сообщения клиентов.
+            allowed_updates: [
+              "message",
+              "business_connection",
+              "business_message",
+              "edited_business_message",
+              "deleted_business_messages",
+            ],
           }),
         });
 
