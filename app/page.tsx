@@ -11,11 +11,7 @@ import {
   UserCheck,
   BarChart3,
   CheckCircle2,
-  XCircle,
   Zap,
-  Shield,
-  Layers,
-  ArrowUpRight,
 } from "lucide-react";
 import DemoChat from "@/components/DemoChat";
 import SupportContact from "@/components/SupportContact";
