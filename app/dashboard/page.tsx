@@ -1,11 +1,59 @@
-import { MessageSquare, UserCheck, Sparkles, Info, ArrowRight, ArrowUpRight, BookOpen, Send, Sliders } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { MessageSquare, UserCheck, Users, Info, ArrowRight, ArrowUpRight, BookOpen, Send, Sliders, Loader2 } from "lucide-react";
 import Link from "next/link";
 
+interface RecentConversation {
+  id: string;
+  customerUsername: string | null;
+  status: string;
+  lastMessage: string | null;
+  createdAt: string;
+}
+
+interface DashboardStats {
+  botConnected: boolean;
+  messagesToday: number;
+  escalatedOpen: number;
+  totalConversations: number;
+  recentConversations: RecentConversation[];
+}
+
+const STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  active: { label: "В работе ИИ", className: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+  awaiting_human: { label: "Ждёт оператора", className: "bg-amber-50 text-amber-700 border-amber-200" },
+  human_takeover: { label: "Ведёт человек", className: "bg-neutral-100 text-neutral-700 border-neutral-200" },
+};
+
 export default function DashboardOverview() {
-  const stats = [
-    { label: "Сообщений за сегодня", value: "128", icon: MessageSquare, change: "+14%" },
-    { label: "Передано оператору", value: "7", icon: UserCheck, change: "5.4%" },
-    { label: "Средняя точность RAG", value: "98.4%", icon: Sparkles, change: "+2.1%" },
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/dashboard/stats")
+      .then((res) => res.json())
+      .then((data) => setStats(data))
+      .catch(() => setStats(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const cards = [
+    {
+      label: "Сообщений от клиентов сегодня",
+      value: stats ? String(stats.messagesToday) : "—",
+      icon: MessageSquare,
+    },
+    {
+      label: "Ждут ответа оператора",
+      value: stats ? String(stats.escalatedOpen) : "—",
+      icon: UserCheck,
+    },
+    {
+      label: "Всего диалогов",
+      value: stats ? String(stats.totalConversations) : "—",
+      icon: Users,
+    },
   ];
 
   return (
@@ -21,16 +69,23 @@ export default function DashboardOverview() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            Бот онлайн
-          </span>
+          {stats?.botConnected ? (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold border border-emerald-200">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Бот подключён
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-neutral-100 text-neutral-600 text-xs font-semibold border border-neutral-200">
+              <span className="w-2 h-2 rounded-full bg-neutral-400" />
+              Бот не подключён
+            </span>
+          )}
         </div>
       </div>
 
       {/* Stats Grid */}
       <div className="grid sm:grid-cols-3 gap-5">
-        {stats.map((s) => {
+        {cards.map((s) => {
           const Icon = s.icon;
           return (
             <div
@@ -44,10 +99,9 @@ export default function DashboardOverview() {
                 </div>
               </div>
               <div className="flex items-baseline justify-between mt-4">
-                <p className="text-3xl font-bold font-heading text-black">{s.value}</p>
-                <span className="text-xs font-semibold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-md">
-                  {s.change}
-                </span>
+                <p className="text-3xl font-bold font-heading text-black">
+                  {loading ? <Loader2 className="w-6 h-6 animate-spin text-neutral-300" /> : s.value}
+                </p>
               </div>
             </div>
           );
@@ -55,27 +109,71 @@ export default function DashboardOverview() {
       </div>
 
       {/* Setup Guide Banner */}
-      <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shrink-0 mt-0.5">
-            <Info className="w-5 h-5" />
+      {!loading && !stats?.botConnected && (
+        <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-5">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-black text-white flex items-center justify-center shrink-0 mt-0.5">
+              <Info className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-black">
+                Быстрый старт: подключите Telegram Business
+              </h3>
+              <p className="text-sm text-neutral-600 mt-1 max-w-xl leading-relaxed">
+                Внесите токен бота в разделе Telegram и наполните базу знаний регламентами или прайсом, чтобы ассистент начал моментально обрабатывать входящие лиды.
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-base font-semibold text-black">
-              Быстрый старт: подключите Telegram Business
-            </h3>
-            <p className="text-sm text-neutral-600 mt-1 max-w-xl leading-relaxed">
-              Внесите токен бота в разделе Telegram и наполните базу знаний регламентами или прайсом, чтобы ассистент начал моментально обрабатывать входящие лиды.
-            </p>
-          </div>
+          <Link
+            href="/dashboard/telegram"
+            className="inline-flex items-center justify-center gap-2 bg-black hover:bg-neutral-800 text-white text-xs font-medium px-5 py-2.5 rounded-full whitespace-nowrap transition-all shadow-sm"
+          >
+            Подключить токен
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
-        <Link
-          href="/dashboard/telegram"
-          className="inline-flex items-center justify-center gap-2 bg-black hover:bg-neutral-800 text-white text-xs font-medium px-5 py-2.5 rounded-full whitespace-nowrap transition-all shadow-sm"
-        >
-          Подключить токен
-          <ArrowRight className="w-3.5 h-3.5" />
-        </Link>
+      )}
+
+      {/* Recent Conversations */}
+      <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-neutral-100">
+          <h3 className="text-base font-semibold text-black">Последние диалоги</h3>
+        </div>
+        {loading ? (
+          <div className="p-10 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-300" />
+          </div>
+        ) : stats && stats.recentConversations.length > 0 ? (
+          <div className="divide-y divide-neutral-100">
+            {stats.recentConversations.map((c) => {
+              const statusInfo = STATUS_LABELS[c.status] || {
+                label: c.status,
+                className: "bg-neutral-100 text-neutral-700 border-neutral-200",
+              };
+              return (
+                <div key={c.id} className="p-4 sm:p-5 flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-black truncate">
+                      {c.customerUsername ? `@${c.customerUsername}` : "Клиент без username"}
+                    </p>
+                    <p className="text-xs text-neutral-500 truncate mt-0.5">
+                      {c.lastMessage || "Нет сообщений"}
+                    </p>
+                  </div>
+                  <span
+                    className={`shrink-0 text-[11px] font-medium px-2.5 py-1 rounded-full border ${statusInfo.className}`}
+                  >
+                    {statusInfo.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="p-10 text-center text-sm text-neutral-500">
+            Пока нет диалогов с клиентами. Как только кто-то напишет вашему боту в Telegram Business, диалог появится здесь.
+          </div>
+        )}
       </div>
 
       {/* Quick Navigation Cards */}
