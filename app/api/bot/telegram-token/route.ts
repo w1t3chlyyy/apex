@@ -1,51 +1,76 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBotConfig, updateBotConfig } from "@/lib/bot-config";
+import { getCurrentUserFromRequest } from "@/lib/current-user";
+import { getBotByOwner, upsertBotForOwner } from "@/lib/bots";
 
 export const runtime = "nodejs";
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "";
+// URL Python-сервиса (bot.py) с RAG-логикой. Именно туда, а не в Next.js,
+// теперь регистрируется вебхук бота-агента конкретного пользователя.
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "";
 
-export async function GET() {
-  const config = await getBotConfig();
-  return NextResponse.json({ connected: !!config.telegramToken });
+export async function GET(req: NextRequest) {
+  const user = getCurrentUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const bot = await getBotByOwner(user.id);
+  return NextResponse.json({
+    connected: !!bot?.botApiToken,
+    webhookRegistered: !!bot?.webhookRegistered,
+    botId: bot?.id ?? null,
+  });
 }
 
 export async function POST(req: NextRequest) {
+  const user = getCurrentUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "Необходимо авторизоваться в личном кабинете" }, { status: 401 });
+  }
+
   try {
     const { token } = await req.json();
     if (!token || typeof token !== "string") {
       return NextResponse.json({ error: "token required" }, { status: 400 });
     }
 
-    // 🔥 ИСПРАВЛЕНИЕ: Проверяем токен через Telegram API перед сохранением
+    // Проверяем токен через Telegram API
+    let botInfo: { id?: number; username?: string } = {};
     try {
       const checkResponse = await fetch(`https://api.telegram.org/bot${token}/getMe`);
-      if (!checkResponse.ok) {
-        const errorData = await checkResponse.json();
+      const checkData = await checkResponse.json();
+      if (!checkResponse.ok || !checkData.ok) {
         return NextResponse.json(
-          { error: `Неверный токен: ${errorData.description || "проверьте формат"}` },
+          { error: `Неверный токен: ${checkData.description || "проверьте формат"}` },
           { status: 400 }
         );
       }
-    } catch (err) {
+      botInfo = checkData.result;
+    } catch {
       return NextResponse.json(
         { error: "Не удалось проверить токен. Проверьте интернет-соединение." },
         { status: 500 }
       );
     }
 
-    // Сохраняем токен в конфигурацию
-    await updateBotConfig({ telegramToken: token });
+    // Сохраняем бота, привязанного к ТЕКУЩЕМУ пользователю (не singleton).
+    const bot = await upsertBotForOwner(user.id, {
+      botApiToken: token,
+      ownerTelegramId: user.telegramId ?? null,
+    });
 
-    // Регистрируем вебхук в Telegram
+    // Регистрируем вебхук на PYTHON-сервисе — там живёт RAG-логика агента,
+    // а не на /api/bot/webhook в Next.js (это отдельный сервисный бот).
     let webhookSet = false;
     let webhookError: string | undefined;
 
-    if (SITE_URL) {
+    if (!PYTHON_SERVICE_URL) {
+      webhookError =
+        "PYTHON_SERVICE_URL не задан в .env — вебхук RAG-сервиса не был зарегистрирован автоматически";
+      console.warn(`[telegram-token] ${webhookError}`);
+    } else {
       try {
-        const webhookUrl = `${SITE_URL.replace(/\/$/, "")}/api/bot/webhook`;
-        console.log(`[telegram-token] Регистрация вебхука на: ${webhookUrl}`);
-        
+        const webhookUrl = `${PYTHON_SERVICE_URL.replace(/\/$/, "")}/webhook/business/${bot.id}`;
         const res = await fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -54,36 +79,32 @@ export async function POST(req: NextRequest) {
             secret_token: process.env.TELEGRAM_WEBHOOK_SECRET || undefined,
           }),
         });
-        
+
         const data = await res.json();
         webhookSet = !!data.ok;
-        
+
         if (!data.ok) {
           webhookError = data.description;
           console.error(`[telegram-token] Ошибка установки вебхука: ${webhookError}`);
-        } else {
-          console.log(`[telegram-token] Вебхук успешно установлен!`);
         }
       } catch (err) {
         webhookError = err instanceof Error ? err.message : "unknown error";
         console.error(`[telegram-token] Ошибка при установке вебхука: ${webhookError}`);
       }
-    } else {
-      webhookError = "NEXT_PUBLIC_SITE_URL не задан в .env — вебхук не был зарегистрирован автоматически";
-      console.warn(`[telegram-token] ${webhookError}`);
     }
+
+    await upsertBotForOwner(user.id, { webhookRegistered: webhookSet });
 
     return NextResponse.json({
       success: true,
       connected: true,
+      botId: bot.id,
+      botUsername: botInfo.username,
       webhookSet,
       webhookError,
     });
   } catch (err) {
     console.error("[telegram-token] Ошибка:", err);
-    return NextResponse.json(
-      { error: "Внутренняя ошибка сервера" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });
   }
 }
