@@ -46,7 +46,19 @@ async function callQwenChat(model: string, messages: ChatMessage[]): Promise<str
   });
 
   if (!res.ok) {
-    const err = new Error(`Qwen API error: ${res.status}`) as Error & { status?: number };
+    // Тело ответа обычно содержит понятную причину (invalid_api_key,
+    // model_not_found, region mismatch и т.д.) — раньше оно терялось,
+    // и 401/403 выглядели как "Qwen API error: 401" без объяснений.
+    let details = "";
+    try {
+      details = await res.text();
+    } catch {
+      // ignore
+    }
+    console.error(`[qwen] HTTP ${res.status} from ${QWEN_BASE_URL}: ${details}`);
+    const err = new Error(`Qwen API error: ${res.status}${details ? ` — ${details}` : ""}`) as Error & {
+      status?: number;
+    };
     err.status = res.status;
     throw err;
   }
