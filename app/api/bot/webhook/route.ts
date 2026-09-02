@@ -3,23 +3,20 @@ import { confirmTelegramSession, getTelegramSession } from "@/lib/session-store"
 import { registerTelegramUser } from "@/lib/telegram-registry";
 import { createServiceClient } from "@/lib/supabase/server";
 import type { AuthUser } from "@/lib/auth";
+import {
+  isAdminTelegramId,
+  broadcastToAllUsers,
+  listAllTelegramUsers,
+  formatPlansList,
+  activateMonthlySubscription,
+} from "@/lib/admin";
 
-export const runtime = "nodejs";
-
-// ВАЖНО: это ЕДИНСТВЕННЫЙ вебхук сервисного бота авторизации.
+// ВАЖНО: это ЕДИНСТВЕННЫЙ вебхук сервисного бота (авторизация + админ-панель).
 // У одного Telegram-бота может быть только ОДИН webhook URL, а сервисный
-// бот отвечает за ДВЕ вещи: (1) вход в личный кабинет по /start auth_xxx и
-// (2) пересылку ответа владельца клиенту, когда RAG-агент передал диалог
-// человеку (см. notify_owner в python-service/bot.py). Раньше это были два
-// разных вебхука (/api/bot/webhook здесь и /webhook/service в Python) —
-// Telegram принял бы только последний зарегистрированный, второй бы не
-// работал. Поэтому обработка "ответа владельца" тоже перенесена сюда;
-// /webhook/service в bot.py оставлен в коде, но регистрировать его как
-// webhook сервисного бота больше не нужно.
-//
-// Также этот роут больше НЕ берёт токен через getBotConfig() — раньше это
-// приводило к тому, что токен ЧУЖОГО бота-агента (сохранённый через
-// /api/bot/telegram-token) управлял логикой входа в личный кабинет.
+// бот отвечает за: (1) вход в личный кабинет по /start auth_xxx, (2)
+// пересылку ответа владельца клиенту при эскалации диалога, и (3) команды
+// админ-панели (/admin, /broadcast, /setplan, /stats, /plans) — доступны
+// только Telegram ID из ADMIN_TELEGRAM_IDS.
 const SERVICE_BOT_TOKEN = process.env.TELEGRAM_SERVICE_BOT_TOKEN || "";
 
 type TelegramUpdate = {
@@ -48,10 +45,6 @@ async function tgCall(token: string, method: string, payload: Record<string, unk
   return res.json();
 }
 
-// Простое in-memory состояние "владелец сейчас отвечает клиенту X".
-// Для нескольких серверных инстансов лучше заменить на таблицу в Supabase,
-// но для одного Next.js-процесса (Vercel serverless — тоже ок в рамках
-// одного вызова с быстрым ответом владельца) этого достаточно как MVP.
 const globalPending = globalThis as unknown as {
   __apexPendingReplies?: Map<number, { conversationId: string }>;
 };
@@ -65,7 +58,10 @@ async function handleOwnerCallback(callback: NonNullable<TelegramUpdate["callbac
   const ownerId = callback.from.id;
 
   if (data.startsWith("reply:")) {
-    const conversationId = data.split(":", 1)[1] ?? data.slice("reply:".length);
+    // Раньше здесь ошибочно вызывался data.split(":", 1)[1], который с
+    // limit=1 всегда возвращает undefined — реально работало только
+    // благодаря fallback на data.slice(...). Убрали лишний/некорректный код.
+    const conversationId = data.slice("reply:".length);
     pendingReplies.set(ownerId, { conversationId });
     await tgCall(SERVICE_BOT_TOKEN, "sendMessage", {
       chat_id: ownerId,
@@ -119,12 +115,16 @@ async function handleOwnerReplyText(ownerId: number, text: string) {
   return true;
 }
 
-async function sendTelegramMessage(token: string, chatId: number, text: string) {
+async function sendTelegramMessage(token: string, chatId: number, text: string, html = false) {
   try {
     const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        ...(html ? { parse_mode: "HTML" } : {}),
+      }),
     });
 
     if (!response.ok) {
@@ -134,6 +134,84 @@ async function sendTelegramMessage(token: string, chatId: number, text: string) 
   } catch (err) {
     console.warn("[auth bot webhook] Не удалось отправить сообщение в Telegram:", err);
   }
+}
+
+// ---------------------------------------------------------------------------
+// АДМИН-ПАНЕЛЬ (доступна только Telegram ID из ADMIN_TELEGRAM_IDS в .env)
+// ---------------------------------------------------------------------------
+
+const ADMIN_HELP =
+  "<b>Админ-панель Apex</b>\n\n" +
+  "/admin — это меню\n" +
+  "/broadcast &lt;текст&gt; — рассылка всем пользователям сайта\n" +
+  "/stats — количество зарегистрированных пользователей\n" +
+  "/plans — список тарифов и их ID\n" +
+  "/setplan &lt;telegram_id&gt; &lt;planId&gt; — активировать/продлить тариф на 30 дней\n";
+
+async function handleAdminCommand(fromId: number, chatId: number, text: string): Promise<boolean> {
+  if (!isAdminTelegramId(fromId)) return false;
+
+  const command = text.split(/\s+/)[0];
+
+  if (command === "/admin") {
+    await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, ADMIN_HELP, true);
+    return true;
+  }
+
+  if (command === "/broadcast") {
+    const message = text.replace(/^\/broadcast(@\S+)?\s*/, "").trim();
+    if (!message) {
+      await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Использование: /broadcast <текст сообщения>");
+      return true;
+    }
+    await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Рассылка запущена, это может занять некоторое время…");
+    const result = await broadcastToAllUsers(SERVICE_BOT_TOKEN, message);
+    await sendTelegramMessage(
+      SERVICE_BOT_TOKEN,
+      chatId,
+      `Рассылка завершена.\nВсего пользователей: ${result.total}\nОтправлено: ${result.sent}\nОшибок: ${result.failed}`
+    );
+    return true;
+  }
+
+  if (command === "/stats") {
+    const users = await listAllTelegramUsers();
+    await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Зарегистрировано пользователей: ${users.length}`);
+    return true;
+  }
+
+  if (command === "/plans") {
+    await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `<b>Доступные тарифы:</b>\n${formatPlansList()}`, true);
+    return true;
+  }
+
+  if (command === "/setplan") {
+    const parts = text.split(/\s+/).slice(1);
+    const targetId = parseInt(parts[0], 10);
+    const planId = parts[1];
+    if (!targetId || !planId) {
+      await sendTelegramMessage(
+        SERVICE_BOT_TOKEN,
+        chatId,
+        `Использование: /setplan &lt;telegram_id&gt; &lt;planId&gt;\n\n${formatPlansList()}`,
+        true
+      );
+      return true;
+    }
+    try {
+      const bot = await activateMonthlySubscription(`tg_${targetId}`, planId);
+      await sendTelegramMessage(
+        SERVICE_BOT_TOKEN,
+        chatId,
+        `Тариф «${planId}» активирован для tg_${targetId} до ${bot.subscriptionExpiresAt}`
+      );
+    } catch (err) {
+      await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Ошибка: ${(err as Error).message}`);
+    }
+    return true;
+  }
+
+  return false;
 }
 
 export async function POST(req: NextRequest) {
@@ -154,7 +232,6 @@ export async function POST(req: NextRequest) {
 
     const update = (await req.json()) as TelegramUpdate;
 
-    // Нажатие кнопки "Ответить" под уведомлением об эскалации
     if (update.callback_query) {
       await handleOwnerCallback(update.callback_query);
       return NextResponse.json({ ok: true });
@@ -169,14 +246,19 @@ export async function POST(req: NextRequest) {
     const text = message.text.trim();
     const chatId = message.chat.id;
 
-    // Если владелец сейчас в режиме "жду текст ответа клиенту" — это не
-    // команда авторизации, а ответ на эскалированный диалог RAG-агента.
+    // Команды админ-панели проверяются в первую очередь: если отправитель
+    // не в ADMIN_TELEGRAM_IDS, handleAdminCommand просто вернёт false и
+    // обработка пойдёт дальше по обычному сценарию (владелец/логин).
+    if (text.startsWith("/")) {
+      const handledAsAdmin = await handleAdminCommand(message.from.id, chatId, text);
+      if (handledAsAdmin) return NextResponse.json({ ok: true });
+    }
+
     const handledAsOwnerReply = await handleOwnerReplyText(message.from.id, text);
     if (handledAsOwnerReply) {
       return NextResponse.json({ ok: true });
     }
 
-    // Deep-link из /login: /start auth_<sessionId>
     const startMatch = text.match(/^\/start(?:@\S+)?\s+auth_([a-zA-Z0-9]+)/);
 
     if (startMatch) {
