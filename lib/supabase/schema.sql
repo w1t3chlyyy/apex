@@ -1,45 +1,17 @@
--- Выполните этот файл в Supabase SQL Editor (или через миграции), чтобы
--- session-store.ts и bot-config.ts могли персистентно хранить данные —
--- без этого на Vercel serverless токен бота и login-сессии будут теряться
--- между вызовами разных lambda-инстансов (см. CHANGELOG.md).
+-- Миграция: Qwen вместо Gemini + ежемесячные подписки.
+-- Выполните этот файл ПОСЛЕ исходного lib/supabase/schema.sql.
 
--- Профили Telegram-пользователей (уже использовалось в lib/telegram-registry.ts)
-create table if not exists profiles (
-  telegram_id bigint primary key,
-  username text,
-  first_name text
-);
+-- 1) Эмбеддинги Qwen (text-embedding-v3) имеют размерность 1024, а не 768
+--    (как у Gemini text-embedding-004). Столбец нужно пересоздать —
+--    старые эмбеддинги несовместимы и базу знаний нужно будет загрузить
+--    заново через /dashboard/knowledge-base после миграции.
+alter table knowledge_base drop column if exists embedding;
+alter table knowledge_base add column embedding vector(1024);
 
--- Сессии логина через Telegram-бота (флоу на /login)
-create table if not exists telegram_login_sessions (
-  session_id text primary key,
-  status text not null default 'pending',
-  session_user jsonb,
-  created_at timestamptz not null default now()
-);
+-- Если у вас есть RPC-функция match_knowledge_base — обновите её сигнатуру
+-- query_embedding vector(1024) вместо vector(768).
 
--- Автоматическая очистка старых сессий не обязательна (TTL проверяется в коде),
--- но можно периодически чистить таблицу вручную/по крону:
--- delete from telegram_login_sessions where created_at < now() - interval '1 day';
-
--- Единая строка конфигурации бота: токен, системный промпт, роль, порог RAG.
--- id всегда = 1 (singleton row), обновляется через upsert.
-create table if not exists bot_config (
-  id int primary key default 1,
-  telegram_token text,
-  system_prompt text,
-  role text,
-  threshold numeric
-);
-
--- База знаний RAG (уже использовалась в app/api/rag/ingest/route.ts).
--- Требует расширение pgvector: create extension if not exists vector;
-create extension if not exists vector;
-
-create table if not exists knowledge_base (
-  id bigserial primary key,
-  bot_id text,
-  content text not null,
-  embedding vector(768),
-  created_at timestamptz not null default now()
-);
+-- 2) Поля ежемесячной подписки в таблице bots (lib/bots.ts, lib/subscriptions.ts)
+alter table bots add column if not exists plan_id text;
+alter table bots add column if not exists subscription_started_at timestamptz;
+alter table bots add column if not exists subscription_expires_at timestamptz;
