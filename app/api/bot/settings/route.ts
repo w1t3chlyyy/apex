@@ -1,31 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getBotConfig, updateBotConfig } from "@/lib/bot-config";
+import { getCurrentUserFromRequest } from "@/lib/current-user";
+import { getBotByOwner, upsertBotForOwner } from "@/lib/bots";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  const config = await getBotConfig();
+export async function GET(req: NextRequest) {
+  const user = getCurrentUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const bot = await getBotByOwner(user.id);
   return NextResponse.json({
-    systemPrompt: config.systemPrompt,
-    role: config.role,
-    threshold: config.threshold,
+    systemPrompt: bot?.systemPrompt ?? "",
+    role: bot?.role ?? "",
+    threshold: bot?.confidenceThreshold ?? 0.75,
   });
 }
 
 export async function POST(req: NextRequest) {
+  const user = getCurrentUserFromRequest(req);
+  if (!user) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
   try {
     const body = await req.json();
-    const config = await updateBotConfig({
+    const bot = await upsertBotForOwner(user.id, {
       systemPrompt: body.systemPrompt,
       role: body.role,
-      threshold: body.threshold,
+      confidenceThreshold: body.threshold,
     });
     return NextResponse.json({
       success: true,
       settings: {
-        systemPrompt: config.systemPrompt,
-        role: config.role,
-        threshold: config.threshold,
+        systemPrompt: bot.systemPrompt,
+        role: bot.role,
+        threshold: bot.confidenceThreshold,
       },
     });
   } catch (err) {
