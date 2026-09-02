@@ -44,8 +44,20 @@ function supabaseConfigured() {
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function rowToBot(row: any): UserBot {
+// Строка из таблицы `bots` в Supabase (snake_case-поля).
+type BotRow = {
+  id: string;
+  owner_id: string;
+  owner_telegram_id?: number | null;
+  bot_api_token?: string | null;
+  system_prompt?: string | null;
+  role?: string | null;
+  confidence_threshold?: number | null;
+  business_connection_id?: string | null;
+  webhook_registered?: boolean | null;
+};
+
+function rowToBot(row: BotRow): UserBot {
   return {
     id: row.id,
     ownerId: row.owner_id,
@@ -101,8 +113,8 @@ export async function getBotById(botId: string): Promise<UserBot | null> {
 
 export async function upsertBotForOwner(
   ownerId: string,
-  patch: Partial<
-    Pick<
+  patch: Partial
+    Pick
       UserBot,
       | "ownerTelegramId"
       | "botApiToken"
