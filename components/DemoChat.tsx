@@ -21,10 +21,6 @@ export default function DemoChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [count, setCount] = useState(0);
-  // Скроллим ТОЛЬКО внутренний контейнер сообщений (не window/document).
-  // Раньше здесь использовался bottomRef + scrollIntoView(), который скроллит
-  // ВСЕ скроллируемые предки элемента, включая саму страницу — из-за этого
-  // при заходе на сайт страница резко "улетала" вниз к этой секции.
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isFirstRender = useRef(true);
 
@@ -48,16 +44,12 @@ export default function DemoChat() {
     const container = messagesContainerRef.current;
     if (!container) return;
 
-    // На первом рендере (в т.ч. после подгрузки истории из localStorage)
-    // не скроллим вообще — просто открываем чат в естественном состоянии.
     if (isFirstRender.current) {
       isFirstRender.current = false;
       container.scrollTop = container.scrollHeight;
       return;
     }
 
-    // На последующих обновлениях (новое сообщение/ответ) — плавно скроллим
-    // именно этот div, а не всю страницу.
     container.scrollTo({ top: container.scrollHeight, behavior: "smooth" });
   }, [messages, loading]);
 
@@ -115,28 +107,28 @@ export default function DemoChat() {
 
   return (
     <div
-      className="flex flex-col h-[70vh] max-h-[560px] min-h-[380px] sm:h-[520px] bg-white border border-neutral-200 rounded-3xl shadow-xl overflow-hidden"
+      className="w-full max-w-full min-w-0 flex flex-col h-[70vh] max-h-[560px] min-h-[380px] sm:h-[520px] bg-white border border-neutral-200 rounded-3xl shadow-xl overflow-hidden"
       id="demo-chat-container"
     >
       {/* Top Chat Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-100 bg-neutral-50/80">
-        <div className="flex items-center gap-3">
-          <div className="relative">
+      <div className="flex items-center justify-between gap-2 px-4 sm:px-5 py-4 border-b border-neutral-100 bg-neutral-50/80 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="relative shrink-0">
             <div className="w-9 h-9 rounded-full bg-black text-white flex items-center justify-center">
               <Bot className="w-4 h-4" />
             </div>
             <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-black ring-2 ring-white" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-semibold text-black tracking-tight">
                 AI Demo Assistant
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-black text-white font-medium">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-black text-white font-medium shrink-0">
                 Live
               </span>
             </div>
-            <p className="text-[11px] text-neutral-500">
+            <p className="text-[11px] text-neutral-500 truncate">
               {limitReached ? "Лимит тестовых сообщений исчерпан" : `Осталось ${MAX_MESSAGES - count} из ${MAX_MESSAGES} тестов`}
             </p>
           </div>
@@ -146,7 +138,7 @@ export default function DemoChat() {
           type="button"
           onClick={resetChat}
           title="Сбросить диалог"
-          className="px-2.5 py-1 rounded-full text-neutral-500 hover:text-black hover:bg-neutral-200/60 transition-colors text-xs flex items-center gap-1.5"
+          className="shrink-0 px-2.5 py-1 rounded-full text-neutral-500 hover:text-black hover:bg-neutral-200/60 transition-colors text-xs flex items-center gap-1.5"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span className="hidden sm:inline text-[11px] font-medium">Сброс</span>
@@ -156,14 +148,14 @@ export default function DemoChat() {
       {/* Messages Area */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30 overscroll-contain"
+        className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30 overscroll-contain"
       >
         {messages.map((m, i) => {
           const isUser = m.role === "user";
           return (
             <div
               key={i}
-              className={`flex items-start gap-2.5 ${isUser ? "justify-end" : "justify-start"}`}
+              className={`flex items-start gap-2.5 min-w-0 ${isUser ? "justify-end" : "justify-start"}`}
             >
               {!isUser && (
                 <div className="w-6 h-6 rounded-full bg-neutral-200 text-neutral-800 flex items-center justify-center shrink-0 mt-0.5">
@@ -171,7 +163,7 @@ export default function DemoChat() {
                 </div>
               )}
               <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 leading-relaxed text-xs sm:text-sm ${
+                className={`max-w-[85%] min-w-0 rounded-2xl px-4 py-3 leading-relaxed text-xs sm:text-sm break-words ${
                   isUser
                     ? "bg-black text-white font-medium rounded-tr-sm shadow-sm"
                     : "bg-white border border-neutral-200 text-neutral-900 rounded-tl-sm shadow-sm"
@@ -193,7 +185,7 @@ export default function DemoChat() {
 
       {/* Quick suggestions */}
       {!limitReached && messages.length <= 2 && (
-        <div className="px-4 py-2.5 border-t border-neutral-100 bg-white flex items-center gap-2 overflow-x-auto">
+        <div className="px-4 py-2.5 border-t border-neutral-100 bg-white flex items-center gap-2 overflow-x-auto min-w-0">
           {quickPrompts.map((prompt) => (
             <button
               key={prompt}
@@ -208,16 +200,16 @@ export default function DemoChat() {
       )}
 
       {/* Input Area */}
-      <div className="p-3.5 border-t border-neutral-100 bg-white">
+      <div className="p-3.5 border-t border-neutral-100 bg-white min-w-0">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             sendMessage();
           }}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 min-w-0"
         >
           <input
-            className="input-bw flex-1 text-xs sm:text-sm py-2.5 px-3.5 bg-neutral-50 border-neutral-200 rounded-full"
+            className="input-bw flex-1 min-w-0 text-xs sm:text-sm py-2.5 px-3.5 bg-neutral-50 border-neutral-200 rounded-full"
             placeholder={limitReached ? "Лимит исчерпан. Нажмите «Сброс» для повтора" : "Задайте вопрос AI-ассистенту..."}
             value={input}
             disabled={limitReached || loading}
