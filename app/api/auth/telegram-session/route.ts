@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 
       response.cookies.set("apex_auth_session", JSON.stringify(session.user), {
         path: "/",
-        maxAge: 60 * 60 * 24 * 30, // 30 дней
+        maxAge: 60 * 60 * 24 * 180, // 180 дней — дольше не просим войти заново
         sameSite: "lax",
         httpOnly: false,
       });
