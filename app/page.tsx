@@ -205,9 +205,10 @@ export default function HeroPage() {
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-12 gap-10 items-center">
+          {/* FIXED: Added grid-cols-1 base class, items-stretch, and min-w-0 */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
             {/* Left Column: Key Highlights */}
-            <div className="lg:col-span-5 space-y-6">
+            <div className="lg:col-span-5 space-y-6 min-w-0">
               <div className="card-bw p-6 md:p-7 bg-white">
                 <div className="w-10 h-10 rounded-2xl bg-black text-white flex items-center justify-center mb-4">
                   <Zap className="w-5 h-5" />
@@ -240,7 +241,8 @@ export default function HeroPage() {
             </div>
 
             {/* Right Column: Live Chat Interface */}
-            <div className="lg:col-span-7">
+            {/* FIXED: Added min-w-0 and w-full */}
+            <div className="lg:col-span-7 min-w-0 w-full">
               <DemoChat />
             </div>
           </div>
