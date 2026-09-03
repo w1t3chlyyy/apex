@@ -3,7 +3,7 @@
 // Используется обычный fetch, поэтому новых npm-зависимостей не требуется.
 
 const QWEN_BASE_URL =
-  process.env.QWEN_BASE_URL || "https://dashscope-intl.aliyuncs.com/compatible-mode/v1";
+  process.env.QWEN_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
 const QWEN_API_KEY = process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY || "";
 
 // Цепочка моделей в порядке приоритета. Можно переопределить через .env:
@@ -46,6 +46,9 @@ async function callQwenChat(model: string, messages: ChatMessage[]): Promise<str
   });
 
   if (!res.ok) {
+    // Тело ответа обычно содержит понятную причину (invalid_api_key,
+    // model_not_found, region mismatch и т.д.) — раньше оно терялось,
+    // и 401/403 выглядели как "Qwen API error: 401" без объяснений.
     let details = "";
     try {
       details = await res.text();
@@ -66,6 +69,7 @@ async function callQwenChat(model: string, messages: ChatMessage[]): Promise<str
 
 function isRetryableError(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
+  // 503 — сервис временно недоступен ("high demand"), 429 — превышен лимит запросов.
   return status === 503 || status === 429;
 }
 
@@ -87,6 +91,12 @@ async function generateWithRetry(model: string, messages: ChatMessage[]): Promis
   throw lastError;
 }
 
+/**
+ * Пытается сгенерировать ответ, последовательно проходя по цепочке моделей
+ * (QWEN_MODEL_CHAIN или дефолтный список). Переход к следующей модели
+ * происходит только при retryable-ошибке (503/429) и исчерпании ретраев
+ * на текущей модели — та же логика, что была для Gemini.
+ */
 async function generateWithFallbackChain(messages: ChatMessage[]): Promise<string> {
   const chain = getModelChain();
   let lastError: unknown;
@@ -160,17 +170,11 @@ export async function embedText(text: string): Promise<number[]> {
       "Content-Type": "application/json",
       Authorization: `Bearer ${QWEN_API_KEY}`,
     },
-    // ВАЖНО: передаем массив [text] вместо одиночной строки, чтобы избежать ошибки 400
-    body: JSON.stringify({ model, input: [text] }),
+    body: JSON.stringify({ model, input: text }),
   });
 
   if (!res.ok) {
-    let details = "";
-    try {
-      details = await res.text();
-    } catch {}
-    console.error(`[qwen embeddings] HTTP ${res.status}: ${details}`);
-    throw new Error(`Qwen embeddings error: ${res.status}${details ? ` — ${details}` : ""}`);
+    throw new Error(`Qwen embeddings error: ${res.status}`);
   }
 
   const data = (await res.json()) as { data?: Array<{ embedding?: number[] }> };
