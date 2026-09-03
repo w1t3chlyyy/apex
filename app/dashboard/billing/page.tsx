@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CreditCard, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { CreditCard, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import SubscriptionTimer from "@/components/SubscriptionTimer";
 import { buildSupportTelegramLink } from "@/lib/support";
 
@@ -18,6 +18,9 @@ interface SubscriptionData {
   expiresAt: string | null;
   status: "active" | "expired" | "none";
   plans: PlanInfo[];
+  isFreeTier: boolean;
+  freeTokensUsed: number;
+  freeTokenLimit: number;
 }
 
 export default function BillingPage() {
@@ -40,6 +43,11 @@ export default function BillingPage() {
     );
   }
 
+  const freeTokensUsed = data?.freeTokensUsed ?? 0;
+  const freeTokenLimit = data?.freeTokenLimit ?? 1000;
+  const freeTokensPercent = Math.min(100, Math.round((freeTokensUsed / freeTokenLimit) * 100));
+  const freeTierExhausted = freeTokensUsed >= freeTokenLimit;
+
   return (
     <div className="space-y-6">
       <div className="border-b border-neutral-200 pb-5">
@@ -51,6 +59,53 @@ export default function BillingPage() {
           активирует или продлевает тариф через админ-панель служебного бота.
         </p>
       </div>
+
+      {/* Бесплатный тариф: прогресс расхода лимита токенов */}
+      {data?.isFreeTier && (
+        <div
+          className={`bg-white border rounded-2xl p-6 sm:p-8 shadow-sm space-y-4 ${
+            freeTierExhausted ? "border-rose-300" : "border-neutral-200"
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                freeTierExhausted ? "bg-rose-600 text-white" : "bg-black text-white"
+              }`}
+            >
+              <Zap className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-black">
+                Бесплатный тариф — {freeTokensUsed} / {freeTokenLimit} токенов
+              </p>
+              <p className="text-xs text-neutral-500 mt-0.5">
+                Лимит на ответы ИИ клиентам. После исчерпания бот перестаёт отвечать
+                автоматически, пока не будет оформлен платный тариф.
+              </p>
+            </div>
+          </div>
+
+          <div className="w-full h-2.5 rounded-full bg-neutral-100 overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                freeTierExhausted ? "bg-rose-600" : "bg-black"
+              }`}
+              style={{ width: `${freeTokensPercent}%` }}
+            />
+          </div>
+
+          {freeTierExhausted && (
+            <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>
+                Бесплатный лимит исчерпан — бот больше не отвечает клиентам автоматически.
+                Выберите тариф ниже, чтобы возобновить работу.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="bg-white border border-neutral-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-5">
         <div className="flex items-center gap-3">
