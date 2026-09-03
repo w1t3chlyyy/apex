@@ -7,11 +7,13 @@ export interface RecentConversation {
   status: string;
   lastMessage: string | null;
   createdAt: string;
+  answeredByAI: boolean;
 }
 
 export interface DashboardStats {
   botConnected: boolean;
   messagesToday: number;
+  answeredByAIToday: number;
   escalatedOpen: number;
   totalConversations: number;
   recentConversations: RecentConversation[];
@@ -24,15 +26,17 @@ function supabaseConfigured() {
 const EMPTY_STATS: DashboardStats = {
   botConnected: false,
   messagesToday: 0,
+  answeredByAIToday: 0,
   escalatedOpen: 0,
   totalConversations: 0,
   recentConversations: [],
 };
 
 /**
- * Собирает реальную статистику для карточек дашборда личного кабинета.
- * Если Supabase не настроен или таблицы ещё не созданы (см. lib/supabase/schema.sql) —
- * тихо возвращает нули вместо падения страницы.
+ * Собирает реальную статистику для карточек дашборда личного кабинета,
+ * включая количество сообщений, на которые реально ответил ИИ (role="assistant"),
+ * и сколько диалогов сейчас ожидают оператора.
+ * Если Supabase не настроен или таблицы ещё не созданы — тихо возвращает нули.
  */
 export async function getDashboardStats(ownerId: string): Promise<DashboardStats> {
   const bot = await getBotByOwner(ownerId);
@@ -69,32 +73,38 @@ export async function getDashboardStats(ownerId: string): Promise<DashboardStats
       .eq("bot_id", bot.id)
       .eq("status", "awaiting_human");
 
-    let messagesToday = 0;
-    const conversationIds = (conversations || []).map((c) => c.id);
-    if (conversationIds.length > 0) {
-      // Считаем сообщения клиентов за сегодня по диалогам этого бота.
-      const { data: allConvIdsRows } = await supabase
-        .from("conversations")
-        .select("id")
-        .eq("bot_id", bot.id);
-      const allIds = (allConvIdsRows || []).map((r) => r.id);
+    const { data: allConvIdsRows } = await supabase
+      .from("conversations")
+      .select("id")
+      .eq("bot_id", bot.id);
+    const allIds = (allConvIdsRows || []).map((r) => r.id);
 
-      if (allIds.length > 0) {
-        const { count } = await supabase
-          .from("messages")
-          .select("id", { count: "exact", head: true })
-          .in("conversation_id", allIds)
-          .eq("role", "customer")
-          .gte("created_at", startOfDay.toISOString());
-        messagesToday = count ?? 0;
-      }
+    let messagesToday = 0;
+    let answeredByAIToday = 0;
+
+    if (allIds.length > 0) {
+      const { count: customerCount } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .in("conversation_id", allIds)
+        .eq("role", "customer")
+        .gte("created_at", startOfDay.toISOString());
+      messagesToday = customerCount ?? 0;
+
+      const { count: aiCount } = await supabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .in("conversation_id", allIds)
+        .eq("role", "assistant")
+        .gte("created_at", startOfDay.toISOString());
+      answeredByAIToday = aiCount ?? 0;
     }
 
     const recentConversations: RecentConversation[] = await Promise.all(
       (conversations || []).map(async (c) => {
         const { data: lastMsg } = await supabase
           .from("messages")
-          .select("content")
+          .select("content, role")
           .eq("conversation_id", c.id)
           .order("created_at", { ascending: false })
           .limit(1)
@@ -105,6 +115,7 @@ export async function getDashboardStats(ownerId: string): Promise<DashboardStats
           status: c.status,
           lastMessage: lastMsg?.content ?? null,
           createdAt: c.created_at,
+          answeredByAI: lastMsg?.role === "assistant",
         };
       })
     );
@@ -112,6 +123,7 @@ export async function getDashboardStats(ownerId: string): Promise<DashboardStats
     return {
       botConnected,
       messagesToday,
+      answeredByAIToday,
       escalatedOpen: escalatedOpen ?? 0,
       totalConversations: totalConversations ?? 0,
       recentConversations,
