@@ -8,7 +8,17 @@ import { createServiceClient } from "./supabase/server";
  * Добавлены поля ежемесячной подписки (planId + даты начала/окончания) —
  * управляются из /dashboard/billing и из админ-панели служебного бота
  * (см. lib/admin.ts, lib/subscriptions.ts).
+ *
+ * freeTokensUsed — счётчик потраченных токенов ответов ИИ для владельцев
+ * БЕЗ платного тарифа (planId === null). Ведётся Python-сервисом (main.py)
+ * напрямую в Supabase — здесь только читается, чтобы показать прогресс в
+ * личном кабинете (см. app/api/bot/subscription, app/dashboard/billing).
+ * FREE_TIER_TOKEN_LIMIT должен совпадать со значением переменной окружения
+ * FREE_TIER_TOKEN_LIMIT в Python-сервисе (.env), иначе прогресс-бар в
+ * дашборде будет показывать неверный процент.
  */
+export const FREE_TIER_TOKEN_LIMIT = 25000;
+
 export interface UserBot {
   id: string;
   ownerId: string;
@@ -22,6 +32,7 @@ export interface UserBot {
   planId: string | null;
   subscriptionStartedAt: string | null;
   subscriptionExpiresAt: string | null;
+  freeTokensUsed: number;
 }
 
 const DEFAULTS = {
@@ -69,6 +80,7 @@ interface BotRow {
   plan_id?: string | null;
   subscription_started_at?: string | null;
   subscription_expires_at?: string | null;
+  free_tokens_used?: number | null;
 }
 
 function rowToBot(row: BotRow): UserBot {
@@ -88,6 +100,7 @@ function rowToBot(row: BotRow): UserBot {
     planId: row.plan_id ?? null,
     subscriptionStartedAt: row.subscription_started_at ?? null,
     subscriptionExpiresAt: row.subscription_expires_at ?? null,
+    freeTokensUsed: row.free_tokens_used ?? 0,
   };
 }
 
@@ -183,6 +196,10 @@ export async function upsertBotForOwner(
       patch.subscriptionExpiresAt !== undefined
         ? patch.subscriptionExpiresAt
         : existing?.subscriptionExpiresAt ?? null,
+    // free_tokens_used ведётся Python-сервисом напрямую в Supabase, здесь
+    // не перезаписывается — просто переносим текущее значение, если оно
+    // уже было известно (для in-memory fallback без Supabase).
+    freeTokensUsed: existing?.freeTokensUsed ?? 0,
   };
 
   memory.set(ownerId, next);
@@ -204,6 +221,10 @@ export async function upsertBotForOwner(
           plan_id: next.planId,
           subscription_started_at: next.subscriptionStartedAt,
           subscription_expires_at: next.subscriptionExpiresAt,
+          // free_tokens_used намеренно НЕ включаем в payload — Supabase
+          // upsert трогает только перечисленные колонки, так что при
+          // конфликте (обновлении существующей строки) значение,
+          // записанное Python-сервисом, останется нетронутым.
         },
         { onConflict: "id" }
       );
