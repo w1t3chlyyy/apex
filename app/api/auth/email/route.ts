@@ -29,12 +29,9 @@ export async function POST(req: NextRequest) {
     const normalizedEmail = email.toLowerCase().trim();
     const emailName = normalizedEmail.split("@")[0];
 
-    // ВАЖНО: раньше ID генерировался как `usr_${Date.now()}` — то есть при
-    // КАЖДОМ повторном входе по этому же email создавался НОВЫЙ пользователь
-    // с чистого листа, и весь ранее настроенный бот/база знаний оказывались
-    // "потеряны" (на самом деле остались привязаны к старому ID, которого
-    // больше никто не спрашивал). Теперь ID стабильный — детерминированный
-    // хэш от email, один и тот же при каждом входе.
+    // Стабильный ID — детерминированный хэш от email, один и тот же при
+    // каждом входе (раньше был `usr_${Date.now()}`, что при каждом входе
+    // создавало нового пользователя и "теряло" настроенного бота).
     const stableId = `usr_${crypto
       .createHash("sha256")
       .update(normalizedEmail)
@@ -56,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     response.cookies.set("apex_auth_session", JSON.stringify(user), {
       path: "/",
-      maxAge: 60 * 60 * 24 * 30, // 30 days
+      maxAge: 60 * 60 * 24 * 180, // 180 дней — пользователь дольше остаётся авторизован
       sameSite: "lax",
       httpOnly: false,
     });
