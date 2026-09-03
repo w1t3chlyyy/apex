@@ -9,7 +9,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
-  Sparkles,
   QrCode,
   ShieldCheck,
   RefreshCw,
@@ -40,7 +39,6 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [codeSent, setCodeSent] = useState(false);
-  const [demoCodeHint, setDemoCodeHint] = useState<string | null>(null);
 
   // 1. Check if running inside Telegram Mini App
   useEffect(() => {
@@ -123,38 +121,6 @@ function LoginForm() {
     };
   }, [activeTab, tgSessionId, tgStatus, redirectTarget, router]);
 
-  // Quick Demo confirmation simulator
-  const handleSimulateTelegramConfirm = async () => {
-    if (!tgSessionId) return;
-    setLoading(true);
-    try {
-      const res = await fetch("/api/auth/telegram-confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId: tgSessionId,
-          telegramUser: {
-            id: 987654321,
-            first_name: "Алексей (Telegram)",
-            username: "hustlify_client",
-          },
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTgStatus("success");
-        setClientUser(data.user);
-        setTimeout(() => {
-          router.push(redirectTarget);
-        }, 600);
-      }
-    } catch {
-      setError("Не удалось подтвердить сессию");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Email handlers
   const handleSendEmailCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -174,7 +140,6 @@ function LoginForm() {
       const data = await res.json();
       if (data.success) {
         setCodeSent(true);
-        setDemoCodeHint(data.demoCode || "7742");
       } else {
         setError(data.error || "Не удалось отправить код");
       }
@@ -188,7 +153,7 @@ function LoginForm() {
   const handleVerifyEmailCode = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code) {
-      setError("Введите 4-значный код");
+      setError("Введите код из письма");
       return;
     }
 
@@ -213,6 +178,11 @@ function LoginForm() {
       setLoading(false);
     }
   };
+
+  const qrTarget = tgDeepLink || `https://t.me/${tgBotUsername}`;
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(
+    qrTarget
+  )}`;
 
   return (
     <div className="min-h-screen bg-neutral-50 flex flex-col justify-between p-4 md:p-8 text-neutral-900 selection:bg-black selection:text-white">
@@ -335,7 +305,7 @@ function LoginForm() {
 
                   {/* Primary Action Button */}
                   <a
-                    href={tgDeepLink || `https://t.me/${tgBotUsername}`}
+                    href={qrTarget}
                     target="_blank"
                     rel="noreferrer"
                     className="w-full py-3.5 px-4 rounded-xl bg-black text-white text-sm font-semibold hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-sm"
@@ -355,39 +325,18 @@ function LoginForm() {
                     <span>{showQr ? "Скрыть QR-код" : "Войти через QR-код с телефона"}</span>
                   </button>
 
-                  {/* QR Code Container */}
+                  {/* QR Code Container — реальный QR, кодирующий deep-link входа */}
                   {showQr && (
                     <div className="p-4 bg-neutral-100 rounded-2xl flex flex-col items-center justify-center gap-3 animate-fadeIn">
                       <div className="bg-white p-3 rounded-xl border border-neutral-200 shadow-sm">
-                        <svg
-                          viewBox="0 0 100 100"
-                          className="w-36 h-36"
-                          fill="black"
-                        >
-                          <rect x="0" y="0" width="30" height="30" fill="black" />
-                          <rect x="4" y="4" width="22" height="22" fill="white" />
-                          <rect x="8" y="8" width="14" height="14" fill="black" />
-
-                          <rect x="70" y="0" width="30" height="30" fill="black" />
-                          <rect x="74" y="4" width="22" height="22" fill="white" />
-                          <rect x="78" y="8" width="14" height="14" fill="black" />
-
-                          <rect x="0" y="70" width="30" height="30" fill="black" />
-                          <rect x="4" y="74" width="22" height="22" fill="white" />
-                          <rect x="8" y="78" width="14" height="14" fill="black" />
-
-                          <rect x="36" y="10" width="8" height="8" />
-                          <rect x="48" y="10" width="8" height="8" />
-                          <rect x="40" y="24" width="12" height="8" />
-                          <rect x="10" y="38" width="8" height="12" />
-                          <rect x="24" y="40" width="8" height="8" />
-                          <rect x="38" y="38" width="24" height="24" rx="4" />
-                          <rect x="70" y="40" width="10" height="10" />
-                          <rect x="85" y="45" width="8" height="18" />
-                          <rect x="40" y="70" width="10" height="10" />
-                          <rect x="55" y="75" width="18" height="8" />
-                          <rect x="78" y="78" width="12" height="12" />
-                        </svg>
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={qrImageUrl}
+                          alt="QR-код для входа через Telegram-бота"
+                          width={160}
+                          height={160}
+                          className="w-40 h-40"
+                        />
                       </div>
                       <p className="text-[11px] text-neutral-500 text-center">
                         Наведите камеру смартфона для быстрого открытия бота
@@ -395,39 +344,22 @@ function LoginForm() {
                     </div>
                   )}
 
-                  {/* Pulsing Status & Simulator */}
-                  <div className="pt-2 border-t border-neutral-100 flex flex-col gap-3">
-                    <div className="flex items-center justify-between text-xs text-neutral-500">
-                      <div className="flex items-center gap-2">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                          <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        <span>Ожидание нажатия в боте...</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={initTelegramSession}
-                        className="hover:text-black flex items-center gap-1 transition-colors"
-                        title="Обновить сессию"
-                      >
-                        <RefreshCw className="w-3 h-3" />
-                      </button>
+                  {/* Pulsing Status */}
+                  <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                      </span>
+                      <span>Ожидание нажатия в боте...</span>
                     </div>
-
-                    {/* Instant Preview verification button */}
                     <button
                       type="button"
-                      onClick={handleSimulateTelegramConfirm}
-                      disabled={loading}
-                      className="w-full py-2 px-3 rounded-lg bg-neutral-100 hover:bg-neutral-200 text-[11px] text-neutral-700 font-medium transition-colors flex items-center justify-center gap-1.5"
+                      onClick={initTelegramSession}
+                      className="hover:text-black flex items-center gap-1 transition-colors"
+                      title="Обновить сессию"
                     >
-                      {loading ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <Sparkles className="w-3 h-3 text-amber-500" />
-                      )}
-                      <span>Быстро подтвердить вход (Демо-тест)</span>
+                      <RefreshCw className="w-3 h-3" />
                     </button>
                   </div>
                 </>
@@ -478,7 +410,10 @@ function LoginForm() {
                       </label>
                       <button
                         type="button"
-                        onClick={() => setCodeSent(false)}
+                        onClick={() => {
+                          setCodeSent(false);
+                          setCode("");
+                        }}
                         className="text-[11px] text-neutral-500 hover:text-black underline"
                       >
                         Сменить email
@@ -488,18 +423,17 @@ function LoginForm() {
                       type="text"
                       maxLength={6}
                       required
-                      placeholder="Например: 7742"
+                      placeholder="6-значный код из письма"
                       value={code}
                       onChange={(e) => setCode(e.target.value)}
                       className="w-full px-4 py-3 rounded-xl border border-neutral-300 text-center font-heading text-xl tracking-widest focus:outline-none focus:ring-2 focus:ring-black focus:border-black transition-all bg-white"
                     />
                   </div>
 
-                  {demoCodeHint && (
-                    <div className="p-2.5 rounded-lg bg-neutral-100 text-center text-xs text-neutral-600">
-                      Демо-код: <span className="font-mono font-bold text-black">{demoCodeHint}</span>
-                    </div>
-                  )}
+                  <p className="text-xs text-neutral-500 text-center">
+                    Мы отправили код на <span className="font-medium text-black">{email}</span>.
+                    Проверьте папку «Спам», если письмо не пришло за пару минут.
+                  </p>
 
                   <button
                     type="submit"
@@ -514,6 +448,15 @@ function LoginForm() {
                         <span>Подтвердить и войти</span>
                       </>
                     )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleSendEmailCode}
+                    disabled={loading}
+                    className="w-full text-xs text-neutral-500 hover:text-black transition-colors"
+                  >
+                    Отправить код повторно
                   </button>
                 </form>
               )}
