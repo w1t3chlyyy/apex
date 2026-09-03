@@ -18,6 +18,12 @@ export interface TelegramSessionStatus {
 const STORAGE_KEY = "apex_auth_user";
 const COOKIE_NAME = "apex_auth_session";
 
+// 180 дней — чтобы пользователь не переавторизовывался при каждом визите
+// (раньше было 30 дней). Значение синхронизировано с maxAge cookie на
+// сервере в app/api/auth/email, app/api/auth/telegram и
+// app/api/auth/telegram-session.
+export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
+
 export function getClientUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   try {
@@ -36,14 +42,10 @@ export function setClientUser(user: AuthUser | null) {
     document.cookie = `${COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
   } else {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    // ВАЖНО: раньше сюда писалась урезанная версия пользователя
-    // ({ id, name, authMethod }), которая ЗАТИРАЛА полную cookie, уже
-    // установленную сервером в ответе на /api/auth/*. Это не ломало
-    // привязку бота (id оставался тем же), но теряло email/telegramId
-    // на клиенте до следующего запроса к /api/auth/session. Пишем теперь
-    // тот же полный объект, что вернул сервер.
+    // Пишем тот же полный объект, что вернул сервер, чтобы не затирать
+    // email/telegramId урезанной версией.
     document.cookie = `${COOKIE_NAME}=${encodeURIComponent(
       JSON.stringify(user)
-    )}; Path=/; Max-Age=2592000; SameSite=Lax`;
+    )}; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax`;
   }
 }
