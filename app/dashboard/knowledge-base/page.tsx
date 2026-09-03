@@ -1,13 +1,49 @@
 "use client";
 
-import { useState } from "react";
-import { UploadCloud, CheckCircle2, AlertCircle, FileText, Loader2, Info } from "lucide-react";
+import { useEffect, useState } from "react";
+import {
+  UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  FileText,
+  Loader2,
+  Info,
+  Trash2,
+  Database,
+} from "lucide-react";
+
+interface KbEntry {
+  id: string;
+  content: string;
+  created_at: string;
+}
 
 export default function KnowledgeBasePage() {
   const [text, setText] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const [entries, setEntries] = useState<KbEntry[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  async function loadEntries() {
+    setEntriesLoading(true);
+    try {
+      const res = await fetch("/api/rag/list");
+      const data = await res.json();
+      setEntries(Array.isArray(data.entries) ? data.entries : []);
+    } catch {
+      setEntries([]);
+    } finally {
+      setEntriesLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadEntries();
+  }, []);
 
   async function ingest() {
     if (!text.trim()) return;
@@ -22,9 +58,6 @@ export default function KnowledgeBasePage() {
       });
       const data = await res.json();
 
-      // Роут теперь честно возвращает ошибку (502/500), если эмбеддинг
-      // или реальная запись в Supabase не удались — раньше он мог
-      // отвечать 200 даже когда данные никуда не сохранились.
       if (!res.ok || data.error) {
         setIsError(true);
         setStatus(data.error || "Ошибка при векторизации. Попробуйте ещё раз.");
@@ -36,11 +69,30 @@ export default function KnowledgeBasePage() {
         `Успешно векторизовано и добавлено ${data.chunks ?? 1} фрагментов в базу знаний вашего бота.${warningSuffix}`
       );
       setText("");
+      loadEntries();
     } catch {
       setIsError(true);
       setStatus("Ошибка при векторизации. Проверьте соединение и попробуйте ещё раз.");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function deleteEntry(id: string) {
+    setDeletingId(id);
+    try {
+      const res = await fetch("/api/rag/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (res.ok) {
+        setEntries((prev) => prev.filter((e) => e.id !== id));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -125,6 +177,54 @@ export default function KnowledgeBasePage() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Список уже добавленных записей */}
+      <div className="bg-white border border-neutral-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-neutral-100 flex items-center gap-2">
+          <Database className="w-4 h-4 text-black" />
+          <h3 className="text-base font-semibold text-black">
+            Уже добавлено в базу знаний {entries.length > 0 && `(${entries.length})`}
+          </h3>
+        </div>
+
+        {entriesLoading ? (
+          <div className="p-10 flex justify-center">
+            <Loader2 className="w-5 h-5 animate-spin text-neutral-300" />
+          </div>
+        ) : entries.length === 0 ? (
+          <div className="p-10 text-center text-sm text-neutral-500">
+            Пока нет ни одной записи. Добавьте текст выше — он появится здесь.
+          </div>
+        ) : (
+          <div className="divide-y divide-neutral-100 max-h-[520px] overflow-y-auto">
+            {entries.map((entry) => (
+              <div key={entry.id} className="p-4 sm:p-5 flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-xs sm:text-sm text-neutral-800 leading-relaxed line-clamp-3">
+                    {entry.content}
+                  </p>
+                  <p className="text-[11px] text-neutral-400 mt-1.5">
+                    {new Date(entry.created_at).toLocaleString("ru-RU")}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => deleteEntry(entry.id)}
+                  disabled={deletingId === entry.id}
+                  className="shrink-0 p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors disabled:opacity-40"
+                  title="Удалить фрагмент"
+                >
+                  {deletingId === entry.id ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
