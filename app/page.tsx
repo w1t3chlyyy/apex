@@ -205,7 +205,7 @@ export default function HeroPage() {
             </p>
           </div>
 
-          {/* FIXED: Added grid-cols-1 base class, items-stretch, and min-w-0 */}
+          {/* FIXED: Добавлен grid-cols-1, items-stretch и min-w-0 для защиты от переполнения */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
             {/* Left Column: Key Highlights */}
             <div className="lg:col-span-5 space-y-6 min-w-0">
@@ -241,7 +241,7 @@ export default function HeroPage() {
             </div>
 
             {/* Right Column: Live Chat Interface */}
-            {/* FIXED: Added min-w-0 and w-full */}
+            {/* FIXED: Добавлены min-w-0 и w-full для корректного сжатия */}
             <div className="lg:col-span-7 min-w-0 w-full">
               <DemoChat />
             </div>
