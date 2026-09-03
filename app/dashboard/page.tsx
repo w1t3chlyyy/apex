@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MessageSquare, UserCheck, Users, Info, ArrowRight, ArrowUpRight, BookOpen, Send, Sliders, Loader2 } from "lucide-react";
+import { MessageSquare, UserCheck, Bot, Info, ArrowRight, ArrowUpRight, BookOpen, Send, Sliders, Loader2 } from "lucide-react";
 import Link from "next/link";
 
 interface RecentConversation {
@@ -10,11 +10,13 @@ interface RecentConversation {
   status: string;
   lastMessage: string | null;
   createdAt: string;
+  answeredByAI: boolean;
 }
 
 interface DashboardStats {
   botConnected: boolean;
   messagesToday: number;
+  answeredByAIToday: number;
   escalatedOpen: number;
   totalConversations: number;
   recentConversations: RecentConversation[];
@@ -45,14 +47,14 @@ export default function DashboardOverview() {
       icon: MessageSquare,
     },
     {
+      label: "Ответил ИИ сегодня",
+      value: stats ? String(stats.answeredByAIToday) : "—",
+      icon: Bot,
+    },
+    {
       label: "Ждут ответа оператора",
       value: stats ? String(stats.escalatedOpen) : "—",
       icon: UserCheck,
-    },
-    {
-      label: "Всего диалогов",
-      value: stats ? String(stats.totalConversations) : "—",
-      icon: Users,
     },
   ];
 
@@ -153,9 +155,20 @@ export default function DashboardOverview() {
               return (
                 <div key={c.id} className="p-4 sm:p-5 flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-black truncate">
-                      {c.customerUsername ? `@${c.customerUsername}` : "Клиент без username"}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-black truncate">
+                        {c.customerUsername ? `@${c.customerUsername}` : "Клиент без username"}
+                      </p>
+                      {c.answeredByAI ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 shrink-0">
+                          <Bot className="w-3 h-3" /> ИИ ответил
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-700 shrink-0">
+                          <UserCheck className="w-3 h-3" /> нужен человек
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-neutral-500 truncate mt-0.5">
                       {c.lastMessage || "Нет сообщений"}
                     </p>
