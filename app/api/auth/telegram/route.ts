@@ -48,9 +48,11 @@ export async function POST(req: NextRequest) {
 
     const response = NextResponse.json({ success: true, user, profile: user });
 
+    // 180 дней — чтобы Mini App не просил повторную регистрацию при
+    // каждом открытии, а помнил пользователя надолго.
     response.cookies.set("apex_auth_session", JSON.stringify(user), {
       path: "/",
-      maxAge: 60 * 60 * 24 * 30,
+      maxAge: 60 * 60 * 24 * 180,
       sameSite: "lax",
       httpOnly: false,
     });
