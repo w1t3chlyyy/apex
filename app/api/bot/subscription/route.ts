@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromRequest } from "@/lib/current-user";
-import { getBotByOwner } from "@/lib/bots";
+import { getBotByOwner, FREE_TIER_TOKEN_LIMIT } from "@/lib/bots";
 import { computeSubscriptionStatus, getSubscriptionPlans } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
@@ -15,5 +15,14 @@ export async function GET(req: NextRequest) {
   const status = await computeSubscriptionStatus(bot);
   const plans = await getSubscriptionPlans();
 
-  return NextResponse.json({ ...status, plans });
+  // isFreeTier = владелец ни разу не оформлял платный тариф (bot.planId
+  // отсутствует). Именно для таких ботов действует лимит в 1000 токенов
+  // (см. main.py: FREE_TIER_TOKEN_LIMIT / is_free_tier).
+  return NextResponse.json({
+    ...status,
+    plans,
+    isFreeTier: !bot?.planId,
+    freeTokensUsed: bot?.freeTokensUsed ?? 0,
+    freeTokenLimit: FREE_TIER_TOKEN_LIMIT,
+  });
 }
