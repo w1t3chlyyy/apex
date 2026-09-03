@@ -1,5 +1,12 @@
 import { createServiceClient } from "./supabase/server";
-import { SUBSCRIPTION_PLANS, activateMonthlySubscription } from "./subscriptions";
+import { activateMonthlySubscription } from "./subscriptions";
+import {
+  getPlans,
+  getPlanById,
+  upsertPlan,
+  deletePlan,
+  type SubscriptionPlan,
+} from "./plans";
 
 function parseAdminIds(): number[] {
   return (process.env.ADMIN_TELEGRAM_IDS || "")
@@ -88,10 +95,23 @@ export async function broadcastToAllUsers(
   return { total: users.length, sent, failed };
 }
 
-export function formatPlansList(): string {
-  return SUBSCRIPTION_PLANS.map(
-    (p) => `• <code>${p.id}</code> — ${p.name}, ${p.priceRub}₽/мес`
-  ).join("\n");
+/**
+ * Краткий список тарифов для команды /plans в админ-панели.
+ * ИЗМЕНЕНО: раньше читал статический массив SUBSCRIPTION_PLANS, теперь —
+ * динамические тарифы из lib/plans.ts (таблица `plans` в Supabase), которые
+ * можно редактировать прямо из чата с сервисным ботом.
+ */
+export async function formatPlansList(): Promise<string> {
+  const plans = await getPlans();
+  if (plans.length === 0) return "Тарифов пока нет. Создайте первый: /addplan <id> <цена> <название>";
+  return plans
+    .map((p) => `• <code>${p.id}</code> — ${p.name}, ${p.priceRub}₽/мес${p.highlighted ? " ⭐" : ""}`)
+    .join("\n");
 }
+
+// Обёртки над lib/plans.ts — используются в app/api/bot/webhook/route.ts
+// командами /planinfo, /addplan, /editplan, /setfeatures, /removeplan.
+export { getPlans, getPlanById, upsertPlan, deletePlan };
+export type { SubscriptionPlan };
 
 export { activateMonthlySubscription };
