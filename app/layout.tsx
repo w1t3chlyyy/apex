@@ -19,8 +19,8 @@ const unbounded = Unbounded({
 });
 
 export const metadata: Metadata = {
-  title: "Apex — Telegram Business AI Platform",
-  description: "Telegram Business AI Platform with RAG knowledge base, autonomous responses, and seamless escalation in pure monochrome design.",
+  title: "Внедряй своего AI агента в бизнес за 5 минут",
+  description: "Сервис для создания AI агентов для бизнеса.",
   icons: {
     icon: "/logo.svg",
   },
