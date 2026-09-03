@@ -24,7 +24,7 @@ export interface SubscriptionPlan {
 
 // Дефолтные тарифы — используются, если Supabase не настроен или таблица
 // `plans` ещё пуста (первый запуск до применения миграции/наполнения).
-const DEFAULT_PLANS: SubscriptionPlan[] = [
+export const DEFAULT_PLANS: SubscriptionPlan[] = [
   {
     id: "start",
     name: "Старт",

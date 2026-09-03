@@ -1,7 +1,8 @@
 import { getBotByOwner, upsertBotForOwner, type UserBot } from "./bots";
-import { getPlans, getPlanById, type SubscriptionPlan } from "./plans";
+import { getPlans, getPlanById, DEFAULT_PLANS, type SubscriptionPlan } from "./plans";
 
 export type { SubscriptionPlan };
+export { DEFAULT_PLANS as SUBSCRIPTION_PLANS };
 
 // ИЗМЕНЕНО: раньше тарифы были захардкожены в константе SUBSCRIPTION_PLANS
 // и синхронизировались с разметкой лендинга вручную (см. старый комментарий

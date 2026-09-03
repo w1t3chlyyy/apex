@@ -133,6 +133,28 @@ async function generateWithFallbackChain(messages: ChatMessage[]): Promise<strin
   throw lastError;
 }
 
+async function generateWithGemini(
+  messages: Array<{ role: string; content: string }>,
+  instruction: string
+): Promise<string> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY is not set");
+  const { GoogleGenAI } = await import("@google/genai");
+  const ai = new GoogleGenAI({ apiKey });
+  const contents = messages.map((m) => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }],
+  }));
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents,
+    config: {
+      systemInstruction: instruction,
+    },
+  });
+  return response.text || "";
+}
+
 export async function generateDemoChatResponse(
   messages: Array<{ role: string; content: string }>,
   systemInstruction?: string
@@ -141,24 +163,33 @@ export async function generateDemoChatResponse(
     systemInstruction ||
     "Ты демо-версия ИИ-ассистента для Telegram Business. Отвечай кратко, дружелюбно, на русском языке, и предлагай пользователю зарегистрироваться, чтобы подключить своего собственного ассистента.";
 
-  const chatMessages: ChatMessage[] = [
-    { role: "system", content: instruction },
-    ...messages.map((m) => ({
-      role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
-      content: m.content,
-    })),
-  ];
+  if (QWEN_API_KEY) {
+    const chatMessages: ChatMessage[] = [
+      { role: "system", content: instruction },
+      ...messages.map((m) => ({
+        role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
+        content: m.content,
+      })),
+    ];
 
-  try {
-    const text = await generateWithFallbackChain(chatMessages);
-    return text || "Извините, не удалось сформировать ответ.";
-  } catch (err) {
-    const status = (err as { status?: number })?.status;
-    if (status === 503 || status === 429) {
-      return "Сейчас ИИ-модель немного перегружена — попробуйте задать вопрос ещё раз через несколько секунд 🙏";
+    try {
+      const text = await generateWithFallbackChain(chatMessages);
+      if (text) return text;
+    } catch (err) {
+      console.warn("[qwen] Chat completion failed, trying fallback:", err);
     }
-    throw err;
   }
+
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const geminiText = await generateWithGemini(messages, instruction);
+      if (geminiText) return geminiText;
+    } catch (err) {
+      console.warn("[gemini] Chat completion failed:", err);
+    }
+  }
+
+  return "Привет! Я демо-ассистент Apex для Telegram Business. Я могу круглосуточно отвечать клиентам, консультировать по товарам и услугам, а также эскалировать сложные вопросы на оператора. Чтобы подключить своего бота, войдите в личный кабинет!";
 }
 
 export async function embedText(text: string): Promise<number[]> {

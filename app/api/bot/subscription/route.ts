@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUserFromRequest } from "@/lib/current-user";
 import { getBotByOwner } from "@/lib/bots";
-import { computeSubscriptionStatus, SUBSCRIPTION_PLANS } from "@/lib/subscriptions";
+import { computeSubscriptionStatus, getSubscriptionPlans } from "@/lib/subscriptions";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,8 @@ export async function GET(req: NextRequest) {
   }
 
   const bot = await getBotByOwner(user.id);
-  const status = computeSubscriptionStatus(bot);
+  const status = await computeSubscriptionStatus(bot);
+  const plans = await getSubscriptionPlans();
 
-  return NextResponse.json({ ...status, plans: SUBSCRIPTION_PLANS });
+  return NextResponse.json({ ...status, plans });
 }
