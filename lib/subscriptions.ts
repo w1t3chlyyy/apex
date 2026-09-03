@@ -1,26 +1,21 @@
 import { getBotByOwner, upsertBotForOwner, type UserBot } from "./bots";
+import { getPlans, getPlanById, type SubscriptionPlan } from "./plans";
 
-export interface SubscriptionPlan {
-  id: string;
-  name: string;
-  priceRub: number;
-  messagesLimit: number;
-  botsLimit: number;
-}
+export type { SubscriptionPlan };
 
-// Тарифы соответствуют секции "PRICING PLANS" на лендинге (app/page.tsx).
-// Изменения тарифов делаются здесь и в разметке лендинга синхронно.
-export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  { id: "start", name: "Старт", priceRub: 1490, messagesLimit: 50, botsLimit: 1 },
-  { id: "business", name: "Бизнес", priceRub: 3990, messagesLimit: 5000, botsLimit: 3 },
-  { id: "enterprise", name: "Enterprise", priceRub: 8990, messagesLimit: Infinity, botsLimit: Infinity },
-];
+// ИЗМЕНЕНО: раньше тарифы были захардкожены в константе SUBSCRIPTION_PLANS
+// и синхронизировались с разметкой лендинга вручную (см. старый комментарий
+// ниже). Теперь тарифы хранятся в lib/plans.ts (таблица `plans` в Supabase)
+// и редактируются из админ-панели служебного бота — изменения сразу видны
+// и на лендинге (через /api/plans), и в личном кабинете
+// (через /api/bot/subscription).
+export const getSubscriptionPlans = getPlans;
 
 const MS_IN_MONTH = 30 * 24 * 60 * 60 * 1000;
 
-export function getPlan(planId: string | null | undefined): SubscriptionPlan | null {
+export async function getPlan(planId: string | null | undefined): Promise<SubscriptionPlan | null> {
   if (!planId) return null;
-  return SUBSCRIPTION_PLANS.find((p) => p.id === planId) ?? null;
+  return getPlanById(planId);
 }
 
 export interface SubscriptionStatus {
@@ -31,11 +26,11 @@ export interface SubscriptionStatus {
   msRemaining: number;
 }
 
-export function computeSubscriptionStatus(bot: UserBot | null): SubscriptionStatus {
+export async function computeSubscriptionStatus(bot: UserBot | null): Promise<SubscriptionStatus> {
   if (!bot || !bot.planId || !bot.subscriptionExpiresAt) {
     return { plan: null, startedAt: null, expiresAt: null, status: "none", msRemaining: 0 };
   }
-  const plan = getPlan(bot.planId);
+  const plan = await getPlan(bot.planId);
   const expiresAt = new Date(bot.subscriptionExpiresAt).getTime();
   const msRemaining = expiresAt - Date.now();
   return {
@@ -58,7 +53,7 @@ export async function activateMonthlySubscription(
   ownerId: string,
   planId: string
 ): Promise<UserBot> {
-  const plan = getPlan(planId);
+  const plan = await getPlan(planId);
   if (!plan) throw new Error(`Неизвестный тариф: ${planId}`);
 
   const existing = await getBotByOwner(ownerId);
