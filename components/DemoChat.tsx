@@ -145,7 +145,7 @@ export default function DemoChat() {
         </button>
       </div>
 
-      {/* Messages Area - FIXED: added min-w-0 and overflow-x-hidden */}
+      {/* Messages Area - FIXED: добавлены min-w-0 и overflow-x-hidden */}
       <div
         ref={messagesContainerRef}
         className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden p-4 sm:p-5 space-y-4 text-xs sm:text-sm bg-neutral-50/30 overscroll-contain"
@@ -183,7 +183,7 @@ export default function DemoChat() {
         )}
       </div>
 
-      {/* Quick suggestions - FIXED: added min-w-0 and overflow-x-auto */}
+      {/* Quick suggestions - FIXED: добавлены min-w-0 и overflow-x-auto */}
       {!limitReached && messages.length <= 2 && (
         <div className="px-4 py-2.5 border-t border-neutral-100 bg-white flex items-center gap-2 overflow-x-auto min-w-0">
           {quickPrompts.map((prompt) => (
@@ -199,7 +199,7 @@ export default function DemoChat() {
         </div>
       )}
 
-      {/* Input Area - FIXED: added min-w-0 */}
+      {/* Input Area - FIXED: добавлен min-w-0 */}
       <div className="p-3.5 border-t border-neutral-100 bg-white min-w-0">
         <form
           onSubmit={(e) => {
