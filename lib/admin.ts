@@ -19,6 +19,15 @@ export function isAdminTelegramId(telegramId: number): boolean {
   return parseAdminIds().includes(telegramId);
 }
 
+/**
+ * Telegram ID администраторов сервиса (ADMIN_TELEGRAM_IDS из .env).
+ * Используется, чтобы разослать уведомление только админам, а не всем
+ * зарегистрированным пользователям (см. notifySupportRequest ниже).
+ */
+export function getAdminTelegramIds(): number[] {
+  return parseAdminIds();
+}
+
 function supabaseConfigured() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
@@ -61,6 +70,54 @@ async function tgSendMessage(token: string, chatId: number, text: string) {
   } catch (err) {
     console.warn("[admin] Ошибка отправки сообщения при рассылке:", err);
   }
+}
+
+export interface SupportRequestInput {
+  name?: string;
+  contact: string;
+  message: string;
+}
+
+export interface SupportNotifyResult {
+  delivered: boolean;
+  admins: number;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Уведомление о новой заявке с публичного блока поддержки на сайте
+ * (components/SupportContact.tsx). Уходит в служебный бот, но ТОЛЬКО
+ * админам сервиса (ADMIN_TELEGRAM_IDS) — обычным зарегистрированным
+ * пользователям (listAllTelegramUsers/broadcastToAllUsers) заявка не
+ * рассылается, это разные адресаты.
+ */
+export async function notifySupportRequest(
+  serviceBotToken: string,
+  input: SupportRequestInput
+): Promise<SupportNotifyResult> {
+  const adminIds = getAdminTelegramIds();
+  if (!serviceBotToken || adminIds.length === 0) {
+    return { delivered: false, admins: adminIds.length };
+  }
+
+  const nameLine = input.name?.trim() ? escapeHtml(input.name.trim()) : "Не указано";
+  const text =
+    `📩 <b>Новая заявка с сайта (форма поддержки)</b>\n\n` +
+    `<b>Имя:</b> ${nameLine}\n` +
+    `<b>Контакт:</b> ${escapeHtml(input.contact.trim())}\n\n` +
+    `<b>Сообщение:</b>\n${escapeHtml(input.message.trim())}`;
+
+  for (const adminId of adminIds) {
+    await tgSendMessage(serviceBotToken, adminId, text);
+  }
+
+  return { delivered: true, admins: adminIds.length };
 }
 
 export interface BroadcastResult {
