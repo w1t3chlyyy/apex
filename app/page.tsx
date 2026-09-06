@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import Link from "next/link";
 import {
@@ -20,7 +21,95 @@ import { buildSupportTelegramLink } from "@/lib/support";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
+// Тариф, как он приходит с публичного /api/plans (см. app/api/plans/route.ts).
+// Это тот же источник, который редактируется из админ-панели служебного
+// бота (app/api/bot/webhook/route.ts) — команды /addplan, /editplan,
+// /setfeatures и инлайн-кнопки "Тарифы" в /admin.
+interface SitePlan {
+  id: string;
+  name: string;
+  priceRub: number;
+  messagesLimit: number | null;
+  botsLimit: number | null;
+  description: string;
+  features: string[];
+  highlighted: boolean;
+  sortOrder: number;
+}
+
+// Показывается, пока /api/plans ещё не ответил (или если он недоступен).
+// Раньше это были единственные, полностью захардкоженные тарифы на сайте —
+// теперь это только запасной вариант на время загрузки.
+const FALLBACK_PLANS: SitePlan[] = [
+  {
+    id: "start",
+    name: "Старт",
+    priceRub: 1490,
+    messagesLimit: 50,
+    botsLimit: 1,
+    description: "Для небольших проектов",
+    features: [
+      "До 50 сообщений в месяц",
+      "1 Telegram Business бот",
+      "База знаний до 50 статей",
+      "Базовая аналитика",
+    ],
+    highlighted: false,
+    sortOrder: 1,
+  },
+  {
+    id: "business",
+    name: "Бизнес",
+    priceRub: 3990,
+    messagesLimit: 5000,
+    botsLimit: 3,
+    description: "Для растущих продаж и сервиса",
+    features: [
+      "До 5 000 сообщений в месяц",
+      "3 Telegram Business бота",
+      "Неограниченная база знаний RAG",
+      "Эскалация на оператора + Webhook",
+      "Приоритетная поддержка 24/7",
+    ],
+    highlighted: true,
+    sortOrder: 2,
+  },
+  {
+    id: "enterprise",
+    name: "Enterprise",
+    priceRub: 8990,
+    messagesLimit: null,
+    botsLimit: null,
+    description: "Для крупных компаний и сетей",
+    features: [
+      "Неограниченное число сообщений",
+      "Любое количество ботов",
+      "Индивидуальная доработка под CRM",
+      "Персональный аккаунт-менеджер",
+    ],
+    highlighted: false,
+    sortOrder: 3,
+  },
+];
+
 export default function HeroPage() {
+  const [plans, setPlans] = useState<SitePlan[]>(FALLBACK_PLANS);
+
+  useEffect(() => {
+    fetch("/api/plans")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data.plans) && data.plans.length > 0) {
+          setPlans(data.plans);
+        }
+      })
+      .catch(() => {
+        // остаёмся на FALLBACK_PLANS
+      });
+  }, []);
+
+  const sortedPlans = [...plans].sort((a, b) => a.sortOrder - b.sortOrder);
+
   return (
     <div className="w-full bg-white text-black min-h-screen">
       {/* ========================================================================= */}
@@ -523,7 +612,8 @@ export default function HeroPage() {
       </section>
 
       {/* ========================================================================= */}
-      {/* 7. PRICING PLANS                                                          */}
+      {/* 7. PRICING PLANS — теперь грузятся динамически из /api/plans,            */}
+      {/* которые редактируются из админ-панели служебного бота.                   */}
       {/* ========================================================================= */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-white" id="pricing">
         <div className="max-w-6xl mx-auto">
@@ -539,133 +629,82 @@ export default function HeroPage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 items-stretch">
-            {/* Plan 1 */}
-            <div className="card-bw p-8 flex flex-col justify-between bg-neutral-50/40">
-              <div>
-                <h3 className="text-xl font-semibold text-black">Старт</h3>
-                <p className="text-xs text-neutral-500 mt-1">Для небольших проектов</p>
-                <div className="my-6">
-                  <span className="text-4xl font-light text-black">1 490 ₽</span>
-                  <span className="text-xs text-neutral-500"> / месяц</span>
-                </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-neutral-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>До 50 сообщений в месяц</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>1 Telegram Business бот</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>База знаний до 50 статей</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>Базовая аналитика</span>
-                  </li>
-                </ul>
-              </div>
-              <div className="pt-8">
-                <a
-                  href={buildSupportTelegramLink("Старт")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-bw-secondary w-full"
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch">
+            {sortedPlans.map((plan) =>
+              plan.highlighted ? (
+                <div
+                  key={plan.id}
+                  className="card-bw-dark p-8 flex flex-col justify-between shadow-2xl relative"
                 >
-                  Выбрать «Старт»
-                </a>
-              </div>
-            </div>
-
-            {/* Plan 2 (Featured - Black) */}
-            <div className="card-bw-dark p-8 flex flex-col justify-between shadow-2xl relative">
-              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-white text-black text-[11px] font-semibold uppercase tracking-wider px-3.5 py-1 rounded-full shadow-sm">
-                Популярный выбор
-              </div>
-              <div>
-                <h3 className="text-xl font-semibold text-white">Бизнес</h3>
-                <p className="text-xs text-neutral-400 mt-1">Для растущих продаж и сервиса</p>
-                <div className="my-6">
-                  <span className="text-4xl font-light text-white">3 990 ₽</span>
-                  <span className="text-xs text-neutral-400"> / месяц</span>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-white text-black text-[11px] font-semibold uppercase tracking-wider px-3.5 py-1 rounded-full shadow-sm">
+                    Популярный выбор
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
+                    {plan.description && (
+                      <p className="text-xs text-neutral-400 mt-1">{plan.description}</p>
+                    )}
+                    <div className="my-6">
+                      <span className="text-4xl font-light text-white">
+                        {plan.priceRub.toLocaleString("ru-RU")} ₽
+                      </span>
+                      <span className="text-xs text-neutral-400"> / месяц</span>
+                    </div>
+                    <ul className="space-y-3 text-xs sm:text-sm text-neutral-300">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="pt-8">
+                    <a
+                      href={buildSupportTelegramLink(plan.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
+                    >
+                      Выбрать «{plan.name}»
+                    </a>
+                  </div>
                 </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-neutral-300">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                    <span>До 5 000 сообщений в месяц</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                    <span>3 Telegram Business бота</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                    <span>Неограниченная база знаний RAG</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                    <span>Эскалация на оператора + Webhook</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-white shrink-0" />
-                    <span>Приоритетная поддержка 24/7</span>
-                  </li>
-                </ul>
-              </div>
-              <div className="pt-8">
-                <a
-                  href={buildSupportTelegramLink("Бизнес")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
-                >
-                  Выбрать «Бизнес»
-                </a>
-              </div>
-            </div>
-
-            {/* Plan 3 */}
-            <div className="card-bw p-8 flex flex-col justify-between bg-neutral-50/40">
-              <div>
-                <h3 className="text-xl font-semibold text-black">Enterprise</h3>
-                <p className="text-xs text-neutral-500 mt-1">Для крупных компаний и сетей</p>
-                <div className="my-6">
-                  <span className="text-4xl font-light text-black">8 990 ₽</span>
-                  <span className="text-xs text-neutral-500"> / месяц</span>
+              ) : (
+                <div key={plan.id} className="card-bw p-8 flex flex-col justify-between bg-neutral-50/40">
+                  <div>
+                    <h3 className="text-xl font-semibold text-black">{plan.name}</h3>
+                    {plan.description && (
+                      <p className="text-xs text-neutral-500 mt-1">{plan.description}</p>
+                    )}
+                    <div className="my-6">
+                      <span className="text-4xl font-light text-black">
+                        {plan.priceRub.toLocaleString("ru-RU")} ₽
+                      </span>
+                      <span className="text-xs text-neutral-500"> / месяц</span>
+                    </div>
+                    <ul className="space-y-3 text-xs sm:text-sm text-neutral-700">
+                      {plan.features.map((feature) => (
+                        <li key={feature} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div className="pt-8">
+                    <a
+                      href={buildSupportTelegramLink(plan.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-bw-secondary w-full"
+                    >
+                      Выбрать «{plan.name}»
+                    </a>
+                  </div>
                 </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-neutral-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>Неограниченное число сообщений</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>Любое количество ботов</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>Индивидуальная доработка под CRM</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-                    <span>Персональный аккаунт-менеджер</span>
-                  </li>
-                </ul>
-              </div>
-              <div className="pt-8">
-                <a
-                  href={buildSupportTelegramLink("Enterprise")}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn-bw-secondary w-full"
-                >
-                  Запросить Enterprise
-                </a>
-              </div>
-            </div>
+              )
+            )}
           </div>
         </div>
       </section>
