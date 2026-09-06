@@ -20,19 +20,37 @@ export default function SupportContact() {
   const [message, setMessage] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || !contact.trim()) return;
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+    setError(null);
+    try {
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, contact, message }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Не удалось отправить заявку");
+      }
       setSubmitted(true);
       setName("");
       setContact("");
       setMessage("");
-    }, 600);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Не удалось отправить заявку, попробуйте ещё раз"
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -197,6 +215,12 @@ export default function SupportContact() {
                   className="input-bw w-full resize-none"
                 />
               </div>
+
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-600">
+                  {error}
+                </div>
+              )}
 
               <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
                 <p className="text-xs text-neutral-500 flex items-center gap-1.5">
