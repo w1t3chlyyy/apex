@@ -466,15 +466,24 @@ function LoginForm() {
           {/* Footer inside card */}
           <div className="mt-8 pt-6 border-t border-neutral-100 text-center">
             <p className="text-[11px] text-neutral-400">
-              Входя в систему, вы соглашаетесь с условиями конфиденциальности Apex
+              Входя в систему, вы принимаете условия{" "}
+              <Link href="/offer" className="underline text-neutral-600 hover:text-black">
+                публичной оферты
+              </Link>
             </p>
           </div>
         </div>
       </main>
 
       {/* Page Footer */}
-      <footer className="text-center py-4 text-xs text-neutral-400">
-        © {new Date().getFullYear()} Apex Platform. Все права защищены.
+      <footer className="text-center py-4 text-xs text-neutral-400 flex items-center justify-center gap-4">
+        <span>© {new Date().getFullYear()} Apex Platform.</span>
+        <Link href="/offer" className="hover:text-black underline">
+          Публичная оферта
+        </Link>
+        <Link href="/" className="hover:text-black">
+          На главную
+        </Link>
       </footer>
     </div>
   );

@@ -735,17 +735,19 @@ export default function HeroPage() {
       {/* ========================================================================= */}
       <footer className="border-t border-neutral-200 py-12 px-6 md:px-12 bg-white">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
-          <div className="flex items-center gap-3">
-            <BrandLogo className="w-6 h-6" />
-            <span className="text-sm font-semibold text-black tracking-tight">
-              Apex
-            </span>
+          <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">
+            <div className="flex items-center gap-2">
+              <BrandLogo className="w-6 h-6" />
+              <span className="text-sm font-semibold text-black tracking-tight">
+                Apex
+              </span>
+            </div>
             <span className="text-xs text-neutral-400">
               © {new Date().getFullYear()} Все права защищены.
             </span>
           </div>
 
-          <div className="flex items-center gap-6 text-xs text-neutral-600">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-neutral-600">
             <a href="#demo-chat" className="hover:text-black transition-colors">
               Демо-чат
             </a>
@@ -761,6 +763,9 @@ export default function HeroPage() {
             <a href="#support" className="hover:text-black transition-colors">
               Поддержка
             </a>
+            <Link href="/offer" className="font-medium text-neutral-900 hover:text-black underline underline-offset-4 transition-colors">
+              Публичная оферта
+            </Link>
             <Link href="/dashboard" className="font-semibold text-black hover:underline">
               Дашборд
             </Link>

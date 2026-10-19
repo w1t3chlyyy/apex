@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { CreditCard, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import SubscriptionTimer from "@/components/SubscriptionTimer";
 import { buildSupportTelegramLink } from "@/lib/support";
@@ -160,9 +161,18 @@ export default function BillingPage() {
           })}
         </div>
 
-        <div className="pt-4 border-t border-neutral-100 flex items-center gap-2 text-xs text-neutral-500">
-          <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
-          <span>Продление всегда добавляет 30 дней к текущей дате окончания, если подписка ещё активна.</span>
+        <div className="pt-4 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-500">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-black shrink-0" />
+            <span>Продление всегда добавляет 30 дней к текущей дате окончания, если подписка ещё активна.</span>
+          </div>
+          <Link
+            href="/offer"
+            target="_blank"
+            className="text-neutral-600 hover:text-black underline underline-offset-2 shrink-0"
+          >
+            Условия публичной оферты
+          </Link>
         </div>
       </div>
     </div>
