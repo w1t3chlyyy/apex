@@ -93,7 +93,7 @@ export default function SupportContact() {
 
             {/* Email Support */}
             <a
-              href="mailto:support@neuralkinetics.io"
+              href="mailto:w1t3chlyyy@gmail.com"
               className="flex items-center justify-between p-4 rounded-2xl bg-neutral-50 border border-neutral-200 hover:border-black group transition-all"
             >
               <div className="flex items-center gap-3">
@@ -104,7 +104,7 @@ export default function SupportContact() {
                   <p className="text-sm font-semibold text-black group-hover:underline">
                     Электронная почта
                   </p>
-                  <p className="text-xs text-neutral-500">hustlify@mail.ru</p>
+                  <p className="text-xs text-neutral-500">w1t3chlyyy@gmail.com</p>
                 </div>
               </div>
               <ExternalLink className="w-4 h-4 text-neutral-400 group-hover:text-black transition-colors" />

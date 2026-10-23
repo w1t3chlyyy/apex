@@ -10,14 +10,15 @@ import {
   Globe,
   CheckCircle2,
   ExternalLink,
+  User,
 } from "lucide-react";
 import BrandLogo from "@/components/BrandLogo";
 import PrintButton from "@/components/PrintButton";
 
 export const metadata = {
-  title: "Публичная оферта | Apex",
+  title: "Публичная оферта | Бенаи Тимур Рустамович (ИНН 920159216794) | Apex",
   description:
-    "Публичная оферта о заключении договора об оказании услуг сервиса Apex (apex-core.site).",
+    "Публичная оферта о заключении договора об оказании услуг сервиса Apex. Исполнитель: самозанятый Бенаи Тимур Рустамович, ИНН 920159216794.",
 };
 
 export default function OfferPage() {
@@ -74,6 +75,7 @@ export default function OfferPage() {
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
               Действующая редакция
             </span>
+            <span>Исполнитель: <strong className="text-black">Бенаи Тимур Рустамович (Самозанятый, ИНН: 920159216794)</strong></span>
             <span>Сайт: <a href="https://www.apex-core.site/" target="_blank" rel="noreferrer" className="underline hover:text-black">https://www.apex-core.site/</a></span>
             <span>Регулируется законодательством РФ (ст. 437 ГК РФ)</span>
           </div>
@@ -200,6 +202,9 @@ export default function OfferPage() {
                   >
                     https://www.apex-core.site/
                   </a>
+                </li>
+                <li>
+                  <strong className="text-black">Исполнитель</strong> — гражданин Российской Федерации Бенаи Тимур Рустамович, плательщик налога на профессиональный доход (самозанятый), ИНН: 920159216794, действующий в соответствии с Федеральным законом от 27.11.2018 № 422-ФЗ.
                 </li>
                 <li>
                   <strong className="text-black">Стороны Договора (Стороны)</strong> — Исполнитель и
@@ -540,12 +545,24 @@ export default function OfferPage() {
 
             <div className="card-bw p-6 sm:p-8 bg-neutral-50/50 space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
+                <div className="bg-white p-4 rounded-xl border border-neutral-200 sm:col-span-2">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-neutral-500 uppercase tracking-wide">
+                    <User className="w-4 h-4 text-black" />
+                    Исполнитель
+                  </div>
+                  <p className="text-lg font-semibold text-black mt-1">Бенаи Тимур Рустамович</p>
+                  <p className="text-xs text-neutral-600 mt-1">
+                    Статус: Самозанятый гражданин РФ (плательщик налога на профессиональный доход в соответствии с Федеральным законом от 27.11.2018 № 422-ФЗ)
+                  </p>
+                </div>
+
                 <div className="bg-white p-4 rounded-xl border border-neutral-200">
                   <div className="flex items-center gap-2 text-xs font-semibold text-neutral-500 uppercase tracking-wide">
                     <Building2 className="w-4 h-4 text-black" />
                     ИНН
                   </div>
                   <p className="text-lg font-mono font-semibold text-black mt-1">920159216794</p>
+                  <p className="text-xs text-neutral-500 mt-1">Идентификационный номер налогоплательщика</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-neutral-200">
@@ -558,6 +575,7 @@ export default function OfferPage() {
                       +7 994 482-16-48
                     </a>
                   </p>
+                  <p className="text-xs text-neutral-500 mt-1">Поддержка и приём обращений</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-neutral-200">
@@ -570,6 +588,7 @@ export default function OfferPage() {
                       w1t3chlyyy@gmail.com
                     </a>
                   </p>
+                  <p className="text-xs text-neutral-500 mt-1">Для официальных запросов и отправки чеков</p>
                 </div>
 
                 <div className="bg-white p-4 rounded-xl border border-neutral-200">
@@ -588,12 +607,13 @@ export default function OfferPage() {
                       <ExternalLink className="w-3.5 h-3.5" />
                     </a>
                   </p>
+                  <p className="text-xs text-neutral-500 mt-1">Официальный веб-сайт сервиса</p>
                 </div>
               </div>
 
               <div className="pt-2 flex items-center gap-2 text-xs text-neutral-500">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>Договор заключается в электронном виде на основании акцепта оферты.</span>
+                <span>Договор заключается в электронном виде на основании акцепта оферты (ст. 438 ГК РФ). Формирование электронных чеков осуществляется в соответствии с законодательством РФ.</span>
               </div>
             </div>
           </section>

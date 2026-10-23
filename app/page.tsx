@@ -745,6 +745,10 @@ export default function HeroPage() {
             <span className="text-xs text-neutral-400">
               © {new Date().getFullYear()} Все права защищены.
             </span>
+            <span className="hidden sm:inline text-neutral-300">•</span>
+            <span className="text-xs text-neutral-600">
+              Самозанятый Бенаи Тимур Рустамович, ИНН: 920159216794
+            </span>
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-neutral-600">
