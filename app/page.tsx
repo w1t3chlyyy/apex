@@ -17,7 +17,7 @@ import {
 import DemoChat from "@/components/DemoChat";
 import SupportContact from "@/components/SupportContact";
 import BrandLogo from "@/components/BrandLogo";
-import { buildSupportTelegramLink } from "@/lib/support";
+
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
@@ -660,14 +660,12 @@ export default function HeroPage() {
                     </ul>
                   </div>
                   <div className="pt-8">
-                    <a
-                      href={buildSupportTelegramLink(plan.name)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
-                    >
-                      Выбрать «{plan.name}»
-                    </a>
+                    <Link
+  href="/login?redirect=/dashboard/billing"
+  className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
+>
+  Выбрать «{plan.name}»
+</Link>
                   </div>
                 </div>
               ) : (
@@ -693,14 +691,12 @@ export default function HeroPage() {
                     </ul>
                   </div>
                   <div className="pt-8">
-                    <a
-                      href={buildSupportTelegramLink(plan.name)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn-bw-secondary w-full"
-                    >
-                      Выбрать «{plan.name}»
-                    </a>
+                   <Link
+  href="/login?redirect=/dashboard/billing"
+  className="btn-bw-secondary w-full"
+>
+  Выбрать «{plan.name}»
+</Link>
                   </div>
                 </div>
               )
