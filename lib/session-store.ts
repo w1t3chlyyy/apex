@@ -1,52 +1,103 @@
 import type { AuthUser } from "./auth";
+import { createServiceClient } from "./supabase/server";
 
-interface TelegramLoginSession {
+export interface TelegramLoginSession {
   sessionId: string;
   createdAt: number;
   status: "pending" | "confirmed" | "expired";
   user?: AuthUser;
 }
 
-// Global in-memory cache for server sessions
-const globalSessions = globalThis as unknown as {
+const TTL_MS = 10 * 60 * 1000;
+
+// Fallback в памяти — только для локальной разработки без Supabase
+const g = globalThis as unknown as {
   __apexTelegramSessions?: Map<string, TelegramLoginSession>;
 };
+if (!g.__apexTelegramSessions) g.__apexTelegramSessions = new Map();
+const memory = g.__apexTelegramSessions;
 
-if (!globalSessions.__apexTelegramSessions) {
-  globalSessions.__apexTelegramSessions = new Map<string, TelegramLoginSession>();
+function supabaseConfigured() {
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-export const telegramSessions = globalSessions.__apexTelegramSessions;
+interface Row {
+  session_id: string;
+  status: string;
+  user_data: AuthUser | null;
+  created_at: string;
+}
 
-export function createTelegramSession(sessionId: string): TelegramLoginSession {
-  const session: TelegramLoginSession = {
-    sessionId,
-    createdAt: Date.now(),
-    status: "pending",
+function rowToSession(row: Row): TelegramLoginSession {
+  const createdAt = new Date(row.created_at).getTime();
+  const expired = Date.now() - createdAt > TTL_MS;
+  return {
+    sessionId: row.session_id,
+    createdAt,
+    status: expired && row.status !== "confirmed" ? "expired" : (row.status as TelegramLoginSession["status"]),
+    user: row.user_data ?? undefined,
   };
-  telegramSessions.set(sessionId, session);
-  return session;
 }
 
-export function getTelegramSession(sessionId: string): TelegramLoginSession | undefined {
-  const session = telegramSessions.get(sessionId);
-  if (!session) return undefined;
-  // Expire after 10 minutes
-  if (Date.now() - session.createdAt > 10 * 60 * 1000) {
-    session.status = "expired";
+export async function createTelegramSession(sessionId: string): Promise<TelegramLoginSession> {
+  const session: TelegramLoginSession = { sessionId, createdAt: Date.now(), status: "pending" };
+
+  if (supabaseConfigured()) {
+    const supabase = createServiceClient();
+    const { error } = await supabase
+      .from("telegram_login_sessions")
+      .insert({ session_id: sessionId, status: "pending" });
+    if (error) throw new Error(`Supabase insert failed: ${error.message}`);
+    return session;
   }
+
+  memory.set(sessionId, session);
   return session;
 }
 
-export function confirmTelegramSession(
+export async function getTelegramSession(sessionId: string): Promise<TelegramLoginSession | undefined> {
+  if (supabaseConfigured()) {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("telegram_login_sessions")
+      .select("*")
+      .eq("session_id", sessionId)
+      .maybeSingle();
+    if (error) {
+      console.error("[session-store] get failed:", error.message);
+      return undefined;
+    }
+    return data ? rowToSession(data as Row) : undefined;
+  }
+
+  const s = memory.get(sessionId);
+  if (!s) return undefined;
+  if (Date.now() - s.createdAt > TTL_MS && s.status !== "confirmed") s.status = "expired";
+  return s;
+}
+
+export async function confirmTelegramSession(
   sessionId: string,
   user: AuthUser
-): TelegramLoginSession | null {
-  const session = getTelegramSession(sessionId);
+): Promise<TelegramLoginSession | null> {
+  const session = await getTelegramSession(sessionId);
   if (!session || session.status === "expired") return null;
+
+  if (supabaseConfigured()) {
+    const supabase = createServiceClient();
+    const { error } = await supabase
+      .from("telegram_login_sessions")
+      .update({ status: "confirmed", user_data: user })
+      .eq("session_id", sessionId);
+    if (error) {
+      console.error("[session-store] confirm failed:", error.message);
+      return null;
+    }
+    return { ...session, status: "confirmed", user };
+  }
 
   session.status = "confirmed";
   session.user = user;
-  telegramSessions.set(sessionId, session);
+  memory.set(sessionId, session);
   return session;
 }
