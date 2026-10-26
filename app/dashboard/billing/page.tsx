@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { CreditCard, Loader2, CheckCircle2, AlertCircle, Zap } from "lucide-react";
 import SubscriptionTimer from "@/components/SubscriptionTimer";
-import { buildSupportTelegramLink } from "@/lib/support";
 
 interface PlanInfo {
   id: string;
@@ -27,14 +26,60 @@ interface SubscriptionData {
 export default function BillingPage() {
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [paymentResult, setPaymentResult] = useState<"success" | "fail" | null>(null);
 
-  useEffect(() => {
-    fetch("/api/bot/subscription")
+  function loadSubscription() {
+    return fetch("/api/bot/subscription")
       .then((res) => res.json())
       .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .catch(() => setData(null));
+  }
+
+  useEffect(() => {
+    // Robokassa возвращает пользователя на ?payment=success или ?payment=fail
+    const param = new URLSearchParams(window.location.search).get("payment");
+    if (param === "success" || param === "fail") setPaymentResult(param);
+
+    loadSubscription().finally(() => setLoading(false));
+
+    // После успешной оплаты Result URL может прийти с небольшой задержкой,
+    // поэтому несколько раз перезапрашиваем статус подписки.
+    if (param === "success") {
+      let tries = 0;
+      const timer = setInterval(() => {
+        tries++;
+        loadSubscription();
+        if (tries >= 5) clearInterval(timer);
+      }, 3000);
+      return () => clearInterval(timer);
+    }
   }, []);
+
+  async function pay(planId: string) {
+    setPayingId(planId);
+    setPayError(null);
+    try {
+      const res = await fetch("/api/payments/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.url) throw new Error(json.error || "Ошибка оплаты");
+
+      const tg = (
+        window as unknown as { Telegram?: { WebApp?: { openLink?: (u: string) => void } } }
+      ).Telegram?.WebApp;
+      if (tg?.openLink) tg.openLink(json.url);
+      else window.location.href = json.url;
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "Ошибка оплаты");
+    } finally {
+      setPayingId(null);
+    }
+  }
 
   if (loading) {
     return (
@@ -45,7 +90,7 @@ export default function BillingPage() {
   }
 
   const freeTokensUsed = data?.freeTokensUsed ?? 0;
-  const freeTokenLimit = data?.freeTokenLimit ?? 1000;
+  const freeTokenLimit = data?.freeTokenLimit ?? 25000;
   const freeTokensPercent = Math.min(100, Math.round((freeTokensUsed / freeTokenLimit) * 100));
   const freeTierExhausted = freeTokensUsed >= freeTokenLimit;
 
@@ -56,10 +101,23 @@ export default function BillingPage() {
           Подписка и оплата
         </h1>
         <p className="text-sm text-neutral-600 mt-1">
-          Все тарифы оплачиваются ежемесячно (30 дней). После оплаты администратор
-          активирует или продлевает тариф через админ-панель служебного бота.
+          Все тарифы оплачиваются ежемесячно (30 дней). Оплата проходит через Robokassa,
+          подписка активируется автоматически сразу после оплаты.
         </p>
       </div>
+
+      {paymentResult === "success" && (
+        <div className="flex items-center gap-2 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium">
+          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+          <span>Оплата прошла. Подписка активируется в течение минуты.</span>
+        </div>
+      )}
+      {paymentResult === "fail" && (
+        <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>Оплата не завершена. Попробуйте ещё раз или напишите в поддержку.</span>
+        </div>
+      )}
 
       {/* Бесплатный тариф: прогресс расхода лимита токенов */}
       {data?.isFreeTier && (
@@ -148,18 +206,29 @@ export default function BillingPage() {
                   {plan.priceRub.toLocaleString("ru-RU")} ₽
                   <span className="text-xs text-neutral-500"> / месяц</span>
                 </p>
-                <a
-                  href={buildSupportTelegramLink(plan.name)}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => pay(plan.id)}
+                  disabled={payingId !== null}
                   className="btn-bw-secondary w-full mt-4 text-xs"
                 >
-                  {isCurrent ? "Продлить" : "Выбрать"}
-                </a>
+                  {payingId === plan.id
+                    ? "Переход к оплате…"
+                    : isCurrent
+                    ? "Продлить"
+                    : "Оплатить"}
+                </button>
               </div>
             );
           })}
         </div>
+
+        {payError && (
+          <div className="flex items-center gap-2 p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{payError}</span>
+          </div>
+        )}
 
         <div className="pt-4 border-t border-neutral-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-neutral-500">
           <div className="flex items-center gap-2">
