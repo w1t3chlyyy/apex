@@ -19,7 +19,7 @@ const g = globalThis as unknown as { __apexEmailOtps?: Map<string, OtpEntry> };
 if (!g.__apexEmailOtps) g.__apexEmailOtps = new Map();
 const memory = g.__apexEmailOtps;
 
-const useDb = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const dbConfigured = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 function hashCode(email: string, code: string) {
   return crypto
@@ -29,7 +29,7 @@ function hashCode(email: string, code: string) {
 }
 
 async function load(email: string): Promise<OtpEntry | null> {
-  if (useDb()) {
+  if (dbConfigured()) {
     const { data, error } = await createServiceClient()
       .from("email_otps")
       .select("code_hash, created_at, attempts")
@@ -44,7 +44,7 @@ async function load(email: string): Promise<OtpEntry | null> {
 }
 
 async function save(email: string, entry: OtpEntry) {
-  if (useDb()) {
+  if (dbConfigured()) {
     const { error } = await createServiceClient().from("email_otps").upsert({
       email,
       code_hash: entry.codeHash,
@@ -58,7 +58,7 @@ async function save(email: string, entry: OtpEntry) {
 }
 
 async function remove(email: string) {
-  if (useDb()) {
+  if (dbConfigured()) {
     await createServiceClient().from("email_otps").delete().eq("email", email);
     return;
   }

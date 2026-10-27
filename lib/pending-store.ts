@@ -10,10 +10,10 @@ const g = globalThis as unknown as { __apexPending?: Map<string, { payload: unkn
 if (!g.__apexPending) g.__apexPending = new Map();
 const memory = g.__apexPending;
 
-const useDb = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const dbConfigured = () => Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 export async function setPending<T>(key: string, payload: T): Promise<void> {
-  if (useDb()) {
+  if (dbConfigured()) {
     const { error } = await createServiceClient()
       .from("pending_actions")
       .upsert({ key, payload, created_at: new Date().toISOString() });
@@ -24,7 +24,7 @@ export async function setPending<T>(key: string, payload: T): Promise<void> {
 }
 
 export async function getPending<T>(key: string): Promise<T | null> {
-  if (useDb()) {
+  if (dbConfigured()) {
     const { data, error } = await createServiceClient()
       .from("pending_actions")
       .select("payload, created_at")
@@ -43,7 +43,7 @@ export async function getPending<T>(key: string): Promise<T | null> {
 }
 
 export async function deletePending(key: string): Promise<void> {
-  if (useDb()) {
+  if (dbConfigured()) {
     await createServiceClient().from("pending_actions").delete().eq("key", key);
     return;
   }
