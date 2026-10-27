@@ -40,18 +40,19 @@ export default function TelegramPage() {
 
       setConnected(true);
       if (data.webhookSet) {
-        setStatus("Токен успешно сохранён и верифицирован. Ваш бот готов к приёму сообщений в Telegram Business.");
+        setStatus("Токен сохранён и проверен. Ваш бот готов к приёму сообщений в Telegram Business.");
+        setToken("");
       } else {
         setIsError(true);
         setStatus(
-          `Токен сохранён, но вебхук RAG-сервиса не зарегистрирован: ${
-            data.webhookError || "проверьте настройку PYTHON_SERVICE_URL"
+          `Токен сохранён, но вебхук не зарегистрирован: ${
+            data.webhookError || "обратитесь в поддержку"
           }`
         );
       }
     } catch {
       setIsError(true);
-      setStatus("Не удалось подключить токен. Пожалуйста, проверьте правильность формата токена.");
+      setStatus("Не удалось подключить токен. Проверьте формат токена и соединение.");
     } finally {
       setSaving(false);
     }
@@ -76,7 +77,6 @@ export default function TelegramPage() {
           </div>
         )}
 
-        {/* Instruction Step Box */}
         <div className="bg-neutral-50 border border-neutral-200 rounded-xl p-4 sm:p-5 space-y-2.5">
           <p className="text-sm font-semibold text-black flex items-center gap-2">
             <Key className="w-4 h-4 text-black" />
@@ -105,7 +105,6 @@ export default function TelegramPage() {
           </ol>
         </div>
 
-        {/* Input */}
         <div>
           <label className="block text-sm font-semibold text-neutral-900 mb-2">Bot API Token</label>
           <input
@@ -113,14 +112,14 @@ export default function TelegramPage() {
             placeholder="1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ"
             value={token}
             onChange={(e) => setToken(e.target.value)}
+            autoComplete="off"
           />
           <p className="text-xs text-neutral-500 mt-1.5">
-            Это ВАШ собственный бот, а не общий бот сервиса. Токен хранится в зашифрованном виде и
-            привязывается только к вашему аккаунту.
+            Это ВАШ собственный бот, а не общий бот сервиса. Токен привязывается только к вашему
+            аккаунту и используется только для работы вашего бота. На один аккаунт подключается один бот.
           </p>
         </div>
 
-        {/* Action Button & Status */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pt-2 border-t border-neutral-100">
           <button
             className="inline-flex items-center gap-2 bg-black hover:bg-neutral-800 text-white text-sm font-medium px-6 py-3 rounded-full transition-all shadow-sm disabled:opacity-40 cursor-pointer"
@@ -160,7 +159,7 @@ export default function TelegramPage() {
 
         <div className="pt-4 border-t border-neutral-100 flex items-center gap-2 text-xs text-neutral-600">
           <ShieldCheck className="w-4 h-4 text-black shrink-0" />
-          <span>Сквозное шифрование и прямая интеграция через Telegram Bot API.</span>
+          <span>Подключение через официальный Telegram Bot API и Telegram Business.</span>
         </div>
       </div>
     </div>

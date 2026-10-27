@@ -1,24 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
+import { SESSION_COOKIE, verifySession } from "@/lib/session-token";
+
+export const runtime = "nodejs";
 
 export async function GET(req: NextRequest) {
-  const cookie = req.cookies.get("apex_auth_session")?.value;
-  if (!cookie) {
-    return NextResponse.json({ authenticated: false, user: null });
-  }
-
-  try {
-    const user = JSON.parse(cookie);
-    return NextResponse.json({ authenticated: true, user });
-  } catch {
-    return NextResponse.json({ authenticated: false, user: null });
-  }
+  const user = verifySession(req.cookies.get(SESSION_COOKIE)?.value);
+  if (!user) return NextResponse.json({ authenticated: false, user: null });
+  return NextResponse.json({ authenticated: true, user });
 }
 
 export async function DELETE() {
   const response = NextResponse.json({ success: true, message: "Logged out" });
-  response.cookies.set("apex_auth_session", "", {
+  response.cookies.set(SESSION_COOKIE, "", {
     path: "/",
     maxAge: 0,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
   });
   return response;
 }

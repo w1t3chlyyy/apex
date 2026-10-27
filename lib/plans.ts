@@ -1,29 +1,25 @@
 import { createServiceClient } from "./supabase/server";
 
 /**
- * Тариф подписки. Источник истины — таблица `plans` в Supabase
- * (см. lib/supabase/schema-plans.sql). Редактируется владельцем через
- * админ-панель служебного бота командами /addplan, /editplan, /setfeatures,
- * /removeplan (см. lib/admin.ts, app/api/bot/webhook/route.ts).
+ * Тариф подписки. Источник истины — таблица `plans` в Supabase,
+ * редактируется из админ-панели служебного бота (/setfeatures, /editplan...).
  *
- * Изменения сразу видны:
- * - на лендинге (app/page.tsx, через публичный /api/plans),
- * - в личном кабинете (app/dashboard/billing/page.tsx, через /api/bot/subscription).
+ * Дефолтные тарифы ниже описывают ТОЛЬКО то, что реально работает:
+ * лимит ответов ИИ в месяц (считает main.py), 1 бот на аккаунт, база знаний
+ * RAG, эскалация на оператора, базовая аналитика в кабинете.
  */
 export interface SubscriptionPlan {
   id: string;
   name: string;
   priceRub: number;
-  messagesLimit: number; // Infinity = безлимит
-  botsLimit: number; // Infinity = безлимит
+  messagesLimit: number; // Infinity = безлимит (лимит ответов ИИ за 30 дней)
+  botsLimit: number; // сейчас везде 1: один бот на аккаунт
   description: string;
   features: string[];
   highlighted: boolean;
   sortOrder: number;
 }
 
-// Дефолтные тарифы — используются, если Supabase не настроен или таблица
-// `plans` ещё пуста (первый запуск до применения миграции/наполнения).
 export const DEFAULT_PLANS: SubscriptionPlan[] = [
   {
     id: "start",
@@ -33,10 +29,11 @@ export const DEFAULT_PLANS: SubscriptionPlan[] = [
     botsLimit: 1,
     description: "Для небольших проектов",
     features: [
-      "До 50 сообщений в месяц",
+      "До 50 ответов ИИ в месяц",
       "1 Telegram Business бот",
-      "База знаний до 50 статей",
-      "Базовая аналитика",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
     ],
     highlighted: false,
     sortOrder: 1,
@@ -46,14 +43,15 @@ export const DEFAULT_PLANS: SubscriptionPlan[] = [
     name: "Бизнес",
     priceRub: 3990,
     messagesLimit: 5000,
-    botsLimit: 3,
+    botsLimit: 1,
     description: "Для растущих продаж и сервиса",
     features: [
-      "До 5 000 сообщений в месяц",
-      "3 Telegram Business бота",
-      "Неограниченная база знаний RAG",
-      "Эскалация на оператора + Webhook",
-      "Приоритетная поддержка 24/7",
+      "До 5 000 ответов ИИ в месяц",
+      "1 Telegram Business бот",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
+      "Приоритетная поддержка в Telegram",
     ],
     highlighted: true,
     sortOrder: 2,
@@ -63,22 +61,22 @@ export const DEFAULT_PLANS: SubscriptionPlan[] = [
     name: "Enterprise",
     priceRub: 8990,
     messagesLimit: Infinity,
-    botsLimit: Infinity,
-    description: "Для крупных компаний и сетей",
+    botsLimit: 1,
+    description: "Для компаний с большим потоком обращений",
     features: [
-      "Неограниченное число сообщений",
-      "Любое количество ботов",
-      "Индивидуальная доработка под CRM",
-      "Универсальный html для внедрения на сайт",
+      "Без лимита на ответы ИИ",
+      "1 Telegram Business бот",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
+      "Приоритетная поддержка в Telegram",
     ],
     highlighted: false,
     sortOrder: 3,
   },
 ];
 
-const globalStore = globalThis as unknown as {
-  __apexPlans?: Map<string, SubscriptionPlan>;
-};
+const globalStore = globalThis as unknown as { __apexPlans?: Map<string, SubscriptionPlan> };
 if (!globalStore.__apexPlans) {
   globalStore.__apexPlans = new Map(DEFAULT_PLANS.map((p) => [p.id, p]));
 }
@@ -128,15 +126,10 @@ function planToRow(plan: SubscriptionPlan): PlanRow {
   };
 }
 
-/**
- * Возвращает все тарифы для отображения на сайте/в личном кабинете,
- * отсортированные по sortOrder.
- */
 export async function getPlans(): Promise<SubscriptionPlan[]> {
   if (supabaseConfigured()) {
     try {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
+      const { data, error } = await createServiceClient()
         .from("plans")
         .select("*")
         .order("sort_order", { ascending: true });
@@ -155,11 +148,6 @@ export async function getPlanById(planId: string): Promise<SubscriptionPlan | nu
   return plans.find((p) => p.id === planId) ?? null;
 }
 
-/**
- * Создаёт новый тариф или частично обновляет существующий (по id).
- * Используется из админ-панели служебного бота: /addplan, /editplan,
- * /setfeatures.
- */
 export async function upsertPlan(
   patch: Partial<Omit<SubscriptionPlan, "id">> & { id: string }
 ): Promise<SubscriptionPlan> {
@@ -183,8 +171,7 @@ export async function upsertPlan(
 
   if (supabaseConfigured()) {
     try {
-      const supabase = createServiceClient();
-      const { error } = await supabase.from("plans").upsert(planToRow(next), { onConflict: "id" });
+      const { error } = await createServiceClient().from("plans").upsert(planToRow(next), { onConflict: "id" });
       if (error) console.warn("[plans] Supabase upsert error:", error.message);
     } catch (err) {
       console.warn("[plans] Supabase upsert failed, using in-memory only:", err);
@@ -199,8 +186,7 @@ export async function deletePlan(planId: string): Promise<boolean> {
 
   if (supabaseConfigured()) {
     try {
-      const supabase = createServiceClient();
-      await supabase.from("plans").delete().eq("id", planId);
+      await createServiceClient().from("plans").delete().eq("id", planId);
     } catch (err) {
       console.warn("[plans] Supabase delete failed:", err);
     }

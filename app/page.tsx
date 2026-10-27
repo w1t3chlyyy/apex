@@ -5,7 +5,6 @@ import { motion } from "motion/react";
 import Link from "next/link";
 import {
   Plus,
-  ArrowRight,
   Bot,
   Database,
   Send,
@@ -17,14 +16,11 @@ import {
 import DemoChat from "@/components/DemoChat";
 import SupportContact from "@/components/SupportContact";
 import BrandLogo from "@/components/BrandLogo";
-
+import { buildSupportTelegramLink } from "@/lib/support";
 
 const EASE = [0.16, 1, 0.3, 1] as const;
 
-// Тариф, как он приходит с публичного /api/plans (см. app/api/plans/route.ts).
-// Это тот же источник, который редактируется из админ-панели служебного
-// бота (app/api/bot/webhook/route.ts) — команды /addplan, /editplan,
-// /setfeatures и инлайн-кнопки "Тарифы" в /admin.
+// Тариф с публичного /api/plans (редактируется из админ-панели служебного бота).
 interface SitePlan {
   id: string;
   name: string;
@@ -37,9 +33,8 @@ interface SitePlan {
   sortOrder: number;
 }
 
-// Показывается, пока /api/plans ещё не ответил (или если он недоступен).
-// Раньше это были единственные, полностью захардкоженные тарифы на сайте —
-// теперь это только запасной вариант на время загрузки.
+// Запасной вариант на время загрузки /api/plans. Описывает только то, что
+// реально работает (совпадает с DEFAULT_PLANS в lib/plans.ts).
 const FALLBACK_PLANS: SitePlan[] = [
   {
     id: "start",
@@ -49,10 +44,11 @@ const FALLBACK_PLANS: SitePlan[] = [
     botsLimit: 1,
     description: "Для небольших проектов",
     features: [
-      "До 50 сообщений в месяц",
+      "До 50 ответов ИИ в месяц",
       "1 Telegram Business бот",
-      "База знаний до 50 статей",
-      "Базовая аналитика",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
     ],
     highlighted: false,
     sortOrder: 1,
@@ -62,14 +58,15 @@ const FALLBACK_PLANS: SitePlan[] = [
     name: "Бизнес",
     priceRub: 3990,
     messagesLimit: 5000,
-    botsLimit: 3,
+    botsLimit: 1,
     description: "Для растущих продаж и сервиса",
     features: [
-      "До 5 000 сообщений в месяц",
-      "3 Telegram Business бота",
-      "Неограниченная база знаний RAG",
-      "Эскалация на оператора + Webhook",
-      "Приоритетная поддержка 24/7",
+      "До 5 000 ответов ИИ в месяц",
+      "1 Telegram Business бот",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
+      "Приоритетная поддержка в Telegram",
     ],
     highlighted: true,
     sortOrder: 2,
@@ -79,13 +76,15 @@ const FALLBACK_PLANS: SitePlan[] = [
     name: "Enterprise",
     priceRub: 8990,
     messagesLimit: null,
-    botsLimit: null,
-    description: "Для крупных компаний и сетей",
+    botsLimit: 1,
+    description: "Для компаний с большим потоком обращений",
     features: [
-      "Неограниченное число сообщений",
-      "Любое количество ботов",
-      "Индивидуальная доработка под CRM",
-      "Персональный аккаунт-менеджер",
+      "Без лимита на ответы ИИ",
+      "1 Telegram Business бот",
+      "База знаний (RAG)",
+      "Эскалация на оператора",
+      "Базовая аналитика в кабинете",
+      "Приоритетная поддержка в Telegram",
     ],
     highlighted: false,
     sortOrder: 3,
@@ -112,11 +111,8 @@ export default function HeroPage() {
 
   return (
     <div className="w-full bg-white text-black min-h-screen">
-      {/* ========================================================================= */}
-      {/* 1. HERO SECTION (Minimal Black & White with Fullscreen Video)             */}
-      {/* ========================================================================= */}
+      {/* 1. HERO */}
       <section className="hero-container" id="hero-landing">
-        {/* Background Video Layer */}
         <div className="video-background-layer" id="background-video-container">
           <motion.div
             className="video-wrapper"
@@ -135,7 +131,6 @@ export default function HeroPage() {
           </motion.div>
         </div>
 
-        {/* Fixed Top Navbar */}
         <motion.nav
           className="navbar"
           id="top-navbar"
@@ -143,7 +138,6 @@ export default function HeroPage() {
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, ease: EASE }}
         >
-          {/* Left Side */}
           <div className="navbar-left" id="nav-left">
             <Link href="/" className="brand-logo-group" id="brand-logo">
               <BrandLogo className="w-6 h-6" />
@@ -158,35 +152,20 @@ export default function HeroPage() {
             </a>
 
             <div className="tags-pill-desktop" id="desktop-tags-pill">
-              <a href="#demo-chat" className="tag-label-text">
-                AI Demo Chat
-              </a>
+              <a href="#demo-chat" className="tag-label-text">AI Demo Chat</a>
               <span className="tag-label-separator" />
-              <a href="#features" className="tag-label-text">
-                Возможности
-              </a>
+              <a href="#features" className="tag-label-text">Возможности</a>
               <span className="tag-label-separator" />
-              <a href="#pricing" className="tag-label-text">
-                Тарифы
-              </a>
+              <a href="#pricing" className="tag-label-text">Тарифы</a>
               <span className="tag-label-separator" />
-              <a href="#support" className="tag-label-text">
-                Поддержка
-              </a>
+              <a href="#support" className="tag-label-text">Поддержка</a>
             </div>
           </div>
 
-          {/* Right Side */}
           <div className="navbar-right" id="nav-right">
             <Link href="/login" className="adaptive-pill" id="adaptive-systems-pill">
               <span className="grid-circle-btn" aria-hidden="true">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 12 12"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <circle cx="3.5" cy="3.5" r="1.25" fill="#ffffff" />
                   <circle cx="8.5" cy="3.5" r="1.25" fill="#ffffff" />
                   <circle cx="3.5" cy="8.5" r="1.25" fill="#ffffff" />
@@ -198,10 +177,8 @@ export default function HeroPage() {
           </div>
         </motion.nav>
 
-        {/* Spacer to push footer to bottom */}
         <div style={{ flex: 1 }} />
 
-        {/* Hero Bottom Banner */}
         <motion.div
           className="footer-container"
           id="footer-hero-section"
@@ -210,7 +187,6 @@ export default function HeroPage() {
           transition={{ delay: 0.5, duration: 1, ease: EASE }}
         >
           <div className="footer-inner">
-            {/* Left Block */}
             <div className="footer-left" id="footer-left-block">
               <motion.div
                 className="subtitle-line"
@@ -230,7 +206,7 @@ export default function HeroPage() {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.8, duration: 0.8, ease: EASE }}
               >
-                AI отвечает. 
+                AI отвечает.
                 <br />
                 AI продаёт. Круглосуточно.
               </motion.h1>
@@ -254,7 +230,6 @@ export default function HeroPage() {
               </motion.div>
             </div>
 
-            {/* Right Block Tags */}
             <motion.div
               className="footer-right"
               id="footer-right-tags"
@@ -262,23 +237,15 @@ export default function HeroPage() {
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: 0.9, duration: 0.8, ease: EASE }}
             >
-              <span className="tag-pill-white" id="tag-neuromorphic">
-                RAG Knowledge
-              </span>
-              <span className="tag-pill-white" id="tag-agi">
-                Telegram Business API
-              </span>
-              <span className="tag-pill-white" id="tag-cybernetics">
-                24/7 Autonomous
-              </span>
+              <span className="tag-pill-white" id="tag-neuromorphic">RAG Knowledge</span>
+              <span className="tag-pill-white" id="tag-agi">Telegram Business API</span>
+              <span className="tag-pill-white" id="tag-cybernetics">24/7 Autonomous</span>
             </motion.div>
           </div>
         </motion.div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 2. INTERACTIVE DEMO CHAT SECTION                                          */}
-      {/* ========================================================================= */}
+      {/* 2. DEMO CHAT */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-neutral-50/50" id="demo-chat">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-14">
@@ -294,17 +261,15 @@ export default function HeroPage() {
             </p>
           </div>
 
-          {/* FIXED: Добавлен grid-cols-1, items-stretch и min-w-0 для защиты от переполнения */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-stretch">
-            {/* Left Column: Key Highlights */}
             <div className="lg:col-span-5 space-y-6 min-w-0">
               <div className="card-bw p-6 md:p-7 bg-white">
                 <div className="w-10 h-10 rounded-2xl bg-black text-white flex items-center justify-center mb-4">
                   <Zap className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-semibold text-black">Мгновенный ответ &lt; 1 сек</h3>
+                <h3 className="text-lg font-semibold text-black">Ответ за секунды</h3>
                 <p className="text-xs sm:text-sm text-neutral-600 mt-2 leading-relaxed">
-                  Клиент получает точную консультацию сразу в момент интереса без ожидания свободного оператора.
+                  Клиент получает ответ сразу в момент интереса, без ожидания свободного оператора.
                 </p>
               </div>
 
@@ -312,9 +277,10 @@ export default function HeroPage() {
                 <div className="w-10 h-10 rounded-2xl bg-black text-white flex items-center justify-center mb-4">
                   <Database className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-semibold text-black">Точность по вашей базе знаний</h3>
+                <h3 className="text-lg font-semibold text-black">Опора на вашу базу знаний</h3>
                 <p className="text-xs sm:text-sm text-neutral-600 mt-2 leading-relaxed">
-                  ИИ отвечает строго по загруженным регламентам, прайс-листам и документам, исключая галлюцинации.
+                  ИИ в первую очередь использует загруженные вами регламенты, прайс-листы и FAQ. На общие вопросы
+                  он отвечает сам, как обычный оператор.
                 </p>
               </div>
 
@@ -322,15 +288,13 @@ export default function HeroPage() {
                 <div className="w-10 h-10 rounded-2xl bg-black text-white flex items-center justify-center mb-4">
                   <UserCheck className="w-5 h-5" />
                 </div>
-                <h3 className="text-lg font-semibold text-black">Бесшовная передача менеджеру</h3>
+                <h3 className="text-lg font-semibold text-black">Передача диалога вам</h3>
                 <p className="text-xs sm:text-sm text-neutral-600 mt-2 leading-relaxed">
-                  Если вопрос требует нестандартного решения, бот мгновенно уведомит живого специалиста.
+                  Если нужен человек, бот пришлёт уведомление в Telegram, и вы ответите клиенту прямо из него.
                 </p>
               </div>
             </div>
 
-            {/* Right Column: Live Chat Interface */}
-            {/* FIXED: Добавлены min-w-0 и w-full для корректного сжатия */}
             <div className="lg:col-span-7 min-w-0 w-full">
               <DemoChat />
             </div>
@@ -338,9 +302,7 @@ export default function HeroPage() {
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 3. FEATURES / CAPABILITIES                                                */}
-      {/* ========================================================================= */}
+      {/* 3. FEATURES */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-white" id="features">
         <div className="max-w-6xl mx-auto">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-6">
@@ -349,93 +311,63 @@ export default function HeroPage() {
                 Функционал
               </span>
               <h2 className="text-3xl sm:text-4xl md:text-5xl font-light tracking-tight text-black">
-                Полный контроль продаж и сервиса
+                Сервис клиентов в Telegram без расширения штата
               </h2>
             </div>
             <p className="text-sm text-neutral-600 max-w-md">
-              Всё необходимое для масштабирования клиентского сервиса в Telegram без расширения штата операторов.
+              Всё необходимое, чтобы отвечать клиентам круглосуточно и подключать человека, когда это нужно.
             </p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {/* Feature 1 */}
-            <div className="card-bw p-6 flex flex-col justify-between hover:-translate-y-1 transition-transform bg-neutral-50/60">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
-                  <Database className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-mono text-neutral-400">01 / RAG</span>
-                <h3 className="text-lg font-semibold text-black mt-2">База знаний RAG</h3>
-                <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                  Векторный поиск по каталогам, PDF и FAQ для безошибочных ответов на любые вопросы.
-                </p>
+            <div className="card-bw p-6 bg-neutral-50/60">
+              <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
+                <Database className="w-5 h-5" />
               </div>
-              <div className="pt-6 mt-6 border-t border-neutral-200/80 flex items-center gap-1.5 text-xs font-medium text-black">
-                <span>Подробнее</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
+              <span className="text-xs font-mono text-neutral-400">01 / RAG</span>
+              <h3 className="text-lg font-semibold text-black mt-2">База знаний RAG</h3>
+              <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                Векторный поиск по тексту ваших каталогов, регламентов и FAQ, чтобы ответы опирались на ваши данные.
+              </p>
             </div>
 
-            {/* Feature 2 */}
-            <div className="card-bw p-6 flex flex-col justify-between hover:-translate-y-1 transition-transform bg-neutral-50/60">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
-                  <Send className="w-5 h-5 -rotate-12" />
-                </div>
-                <span className="text-xs font-mono text-neutral-400">02 / API</span>
-                <h3 className="text-lg font-semibold text-black mt-2">Telegram Business</h3>
-                <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                  Официальное подключение прямо к вашему бизнес-аккаунту Telegram за пару кликов.
-                </p>
+            <div className="card-bw p-6 bg-neutral-50/60">
+              <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
+                <Send className="w-5 h-5 -rotate-12" />
               </div>
-              <div className="pt-6 mt-6 border-t border-neutral-200/80 flex items-center gap-1.5 text-xs font-medium text-black">
-                <span>Подробнее</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
+              <span className="text-xs font-mono text-neutral-400">02 / API</span>
+              <h3 className="text-lg font-semibold text-black mt-2">Telegram Business</h3>
+              <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                Подключение вашего бота к бизнес-аккаунту Telegram: ответы уходят от вашего имени.
+              </p>
             </div>
 
-            {/* Feature 3 */}
-            <div className="card-bw p-6 flex flex-col justify-between hover:-translate-y-1 transition-transform bg-neutral-50/60">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
-                  <UserCheck className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-mono text-neutral-400">03 / HANDOVER</span>
-                <h3 className="text-lg font-semibold text-black mt-2">Эскалация на оператора</h3>
-                <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                  Умное определение готовности к покупке и передача горячего лида сотруднику в CRM.
-                </p>
+            <div className="card-bw p-6 bg-neutral-50/60">
+              <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
+                <UserCheck className="w-5 h-5" />
               </div>
-              <div className="pt-6 mt-6 border-t border-neutral-200/80 flex items-center gap-1.5 text-xs font-medium text-black">
-                <span>Подробнее</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
+              <span className="text-xs font-mono text-neutral-400">03 / HANDOVER</span>
+              <h3 className="text-lg font-semibold text-black mt-2">Эскалация на оператора</h3>
+              <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                Просьба позвать менеджера, вопросы об оплате и жалобы передаются вам в Telegram с кнопкой «Ответить».
+              </p>
             </div>
 
-            {/* Feature 4 */}
-            <div className="card-bw p-6 flex flex-col justify-between hover:-translate-y-1 transition-transform bg-neutral-50/60">
-              <div>
-                <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
-                  <BarChart3 className="w-5 h-5" />
-                </div>
-                <span className="text-xs font-mono text-neutral-400">04 / ANALYTICS</span>
-                <h3 className="text-lg font-semibold text-black mt-2">Сквозная аналитика</h3>
-                <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                  Статистика диалогов, конверсий, популярных запросов и времени закрытия сделок.
-                </p>
+            <div className="card-bw p-6 bg-neutral-50/60">
+              <div className="w-12 h-12 rounded-2xl bg-black text-white flex items-center justify-center mb-5">
+                <BarChart3 className="w-5 h-5" />
               </div>
-              <div className="pt-6 mt-6 border-t border-neutral-200/80 flex items-center gap-1.5 text-xs font-medium text-black">
-                <span>Подробнее</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </div>
+              <span className="text-xs font-mono text-neutral-400">04 / ANALYTICS</span>
+              <h3 className="text-lg font-semibold text-black mt-2">Аналитика в кабинете</h3>
+              <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
+                Сообщения клиентов за день, ответы ИИ, диалоги, ожидающие оператора, и последние переписки.
+              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 4. HOW IT WORKS (3 Simple Steps)                                         */}
-      {/* ========================================================================= */}
+      {/* 4. HOW IT WORKS */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-neutral-50/40" id="how-it-works">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -451,7 +383,6 @@ export default function HeroPage() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 relative">
-            {/* Step 1 */}
             <div className="card-bw p-8 bg-white relative">
               <span className="text-4xl font-light text-neutral-300 font-mono">01</span>
               <h3 className="text-xl font-semibold text-black mt-4">Подключите токен</h3>
@@ -460,7 +391,6 @@ export default function HeroPage() {
               </p>
             </div>
 
-            {/* Step 2 */}
             <div className="card-bw p-8 bg-white relative">
               <span className="text-4xl font-light text-neutral-300 font-mono">02</span>
               <h3 className="text-xl font-semibold text-black mt-4">Добавьте базу знаний</h3>
@@ -469,21 +399,18 @@ export default function HeroPage() {
               </p>
             </div>
 
-            {/* Step 3 */}
             <div className="card-bw p-8 bg-white relative">
               <span className="text-4xl font-light text-neutral-300 font-mono">03</span>
-              <h3 className="text-xl font-semibold text-black mt-4">Запустите продажи 24/7</h3>
+              <h3 className="text-xl font-semibold text-black mt-4">Запустите ответы 24/7</h3>
               <p className="text-xs sm:text-sm text-neutral-600 mt-2 leading-relaxed">
-                Ассистент начнет мгновенно отвечать клиентам, квалифицировать лиды и принимать заявки.
+                Ассистент начнёт отвечать клиентам, а сложные вопросы передаст вам.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 5. AUDIENCE / USE CASES                                                   */}
-      {/* ========================================================================= */}
+      {/* 5. AUDIENCE */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-white" id="audience">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -494,7 +421,7 @@ export default function HeroPage() {
               Решения под любые ниши
             </h2>
             <p className="text-sm text-neutral-600 mt-3">
-              Автоматизация рутины и увеличение конверсии в Telegram для любого формата бизнеса.
+              Автоматизация типовых ответов в Telegram для разных форматов бизнеса.
             </p>
           </div>
 
@@ -502,37 +429,35 @@ export default function HeroPage() {
             <div className="card-bw p-6 bg-neutral-50/50">
               <h3 className="text-lg font-semibold text-black">E-commerce</h3>
               <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                Консультации по каталогу, подбор размеров, проверка наличия и оформления заказов 24/7.
+                Ответы по каталогу, доставке, оплате и возврату на основе вашей базы знаний.
               </p>
             </div>
 
             <div className="card-bw p-6 bg-neutral-50/50">
               <h3 className="text-lg font-semibold text-black">Сфера услуг</h3>
               <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                Запись на консультации, расчет стоимости, напоминания о визитах и ответы на типовые вопросы.
+                Ответы на типовые вопросы об услугах, ценах и условиях. Сложные случаи уходят вам.
               </p>
             </div>
 
             <div className="card-bw p-6 bg-neutral-50/50">
               <h3 className="text-lg font-semibold text-black">Инфобизнес</h3>
               <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                Прогрев лидов, выдача материалов, ответы по программам курсов и прием оплат.
+                Ответы по программам и условиям курсов, первичные консультации потенциальных учеников.
               </p>
             </div>
 
             <div className="card-bw p-6 bg-neutral-50/50">
-              <h3 className="text-lg font-semibold text-black">B2B продажи</h3>
+              <h3 className="text-lg font-semibold text-black">B2B</h3>
               <p className="text-xs text-neutral-600 mt-2 leading-relaxed">
-                Первичный сбор требований, квалификация входящего трафика и передача КП лицу, принимающему решения.
+                Первичные ответы клиентам и передача сложных запросов ответственному сотруднику.
               </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 6. COMPARISON MATRIX (AI vs Operator)                                     */}
-      {/* ========================================================================= */}
+      {/* 6. COMPARISON */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-neutral-50/50" id="comparison">
         <div className="max-w-4xl mx-auto">
           <div className="text-center max-w-xl mx-auto mb-14">
@@ -543,13 +468,10 @@ export default function HeroPage() {
               AI-ассистент vs Штатный оператор
             </h2>
             <p className="text-sm text-neutral-600 mt-3">
-              Экономия до 80% затрат на клиентский сервис при 10-кратном росте скорости.
+              Экономия на клиентском сервисе и ответы без очереди.
             </p>
           </div>
 
-          {/* На мобильных экранах 3 колонки таблицы сжимались и текст переносился
-              криво. Теперь таблица имеет фиксированную минимальную ширину и
-              скроллится по горизонтали внутри карточки, а не ломает вёрстку. */}
           <div className="card-bw overflow-hidden bg-white">
             <div className="overflow-x-auto">
               <div className="min-w-[560px]">
@@ -564,7 +486,7 @@ export default function HeroPage() {
                     <div className="font-medium text-black">Скорость ответа</div>
                     <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-black" />
-                      &lt; 1 секунды
+                      Секунды
                     </div>
                     <div className="text-center text-neutral-500">5 – 30 минут</div>
                   </div>
@@ -573,7 +495,7 @@ export default function HeroPage() {
                     <div className="font-medium text-black">Режим работы</div>
                     <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-black" />
-                      24/7/365 без пауз
+                      24/7 без пауз
                     </div>
                     <div className="text-center text-neutral-500">8ч в будни + отпуска</div>
                   </div>
@@ -591,16 +513,16 @@ export default function HeroPage() {
                     <div className="font-medium text-black">Параллельные диалоги</div>
                     <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-black" />
-                      Неограниченно
+                      Много одновременно
                     </div>
                     <div className="text-center text-neutral-500">1 – 2 диалога</div>
                   </div>
 
                   <div className="grid grid-cols-3 p-4 md:p-5 items-center">
-                    <div className="font-medium text-black">Соблюдение регламентов</div>
+                    <div className="font-medium text-black">Опора на регламенты</div>
                     <div className="text-center font-semibold text-black flex items-center justify-center gap-1.5">
                       <CheckCircle2 className="w-4 h-4 text-black" />
-                      100% точно по RAG
+                      Приоритет — ваша база знаний
                     </div>
                     <div className="text-center text-neutral-500">Человеческий фактор</div>
                   </div>
@@ -611,10 +533,7 @@ export default function HeroPage() {
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 7. PRICING PLANS — теперь грузятся динамически из /api/plans,            */}
-      {/* которые редактируются из админ-панели служебного бота.                   */}
-      {/* ========================================================================= */}
+      {/* 7. PRICING */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-white" id="pricing">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -625,29 +544,22 @@ export default function HeroPage() {
               Прозрачные тарифные планы
             </h2>
             <p className="text-sm text-neutral-600 mt-3">
-              Выберите подходящий тариф для вашего объема диалогов. Без скрытых платежей.
+              Выберите подходящий тариф для вашего объёма диалогов. Оплата помесячно, без скрытых платежей.
             </p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8 items-stretch">
             {sortedPlans.map((plan) =>
               plan.highlighted ? (
-                <div
-                  key={plan.id}
-                  className="card-bw-dark p-8 flex flex-col justify-between shadow-2xl relative"
-                >
+                <div key={plan.id} className="card-bw-dark p-8 flex flex-col justify-between shadow-2xl relative">
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-white text-black text-[11px] font-semibold uppercase tracking-wider px-3.5 py-1 rounded-full shadow-sm">
                     Популярный выбор
                   </div>
                   <div>
                     <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
-                    {plan.description && (
-                      <p className="text-xs text-neutral-400 mt-1">{plan.description}</p>
-                    )}
+                    {plan.description && <p className="text-xs text-neutral-400 mt-1">{plan.description}</p>}
                     <div className="my-6">
-                      <span className="text-4xl font-light text-white">
-                        {plan.priceRub.toLocaleString("ru-RU")} ₽
-                      </span>
+                      <span className="text-4xl font-light text-white">{plan.priceRub.toLocaleString("ru-RU")} ₽</span>
                       <span className="text-xs text-neutral-400"> / месяц</span>
                     </div>
                     <ul className="space-y-3 text-xs sm:text-sm text-neutral-300">
@@ -660,25 +572,23 @@ export default function HeroPage() {
                     </ul>
                   </div>
                   <div className="pt-8">
-                    <Link
-  href="/login?redirect=/dashboard/billing"
-  className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
->
-  Выбрать «{plan.name}»
-</Link>
+                    <a
+                      href={buildSupportTelegramLink(plan.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center justify-center w-full bg-white text-black text-sm font-medium py-3 rounded-full hover:bg-neutral-200 transition-colors"
+                    >
+                      Выбрать «{plan.name}»
+                    </a>
                   </div>
                 </div>
               ) : (
                 <div key={plan.id} className="card-bw p-8 flex flex-col justify-between bg-neutral-50/40">
                   <div>
                     <h3 className="text-xl font-semibold text-black">{plan.name}</h3>
-                    {plan.description && (
-                      <p className="text-xs text-neutral-500 mt-1">{plan.description}</p>
-                    )}
+                    {plan.description && <p className="text-xs text-neutral-500 mt-1">{plan.description}</p>}
                     <div className="my-6">
-                      <span className="text-4xl font-light text-black">
-                        {plan.priceRub.toLocaleString("ru-RU")} ₽
-                      </span>
+                      <span className="text-4xl font-light text-black">{plan.priceRub.toLocaleString("ru-RU")} ₽</span>
                       <span className="text-xs text-neutral-500"> / месяц</span>
                     </div>
                     <ul className="space-y-3 text-xs sm:text-sm text-neutral-700">
@@ -691,23 +601,28 @@ export default function HeroPage() {
                     </ul>
                   </div>
                   <div className="pt-8">
-                   <Link
-  href="/login?redirect=/dashboard/billing"
-  className="btn-bw-secondary w-full"
->
-  Выбрать «{plan.name}»
-</Link>
+                    <a
+                      href={buildSupportTelegramLink(plan.name)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn-bw-secondary w-full"
+                    >
+                      Выбрать «{plan.name}»
+                    </a>
                   </div>
                 </div>
               )
             )}
           </div>
+
+          <p className="text-center text-xs text-neutral-500 mt-8 max-w-2xl mx-auto leading-relaxed">
+            «Ответ ИИ» — один ответ бота клиенту. Лимит считается за 30 дней с первого ответа в периоде; когда он
+            исчерпан, бот передаёт диалоги вам.
+          </p>
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 8. SUPPORT & CONSULTATION FORM                                            */}
-      {/* ========================================================================= */}
+      {/* 8. SUPPORT */}
       <section className="py-24 px-6 md:px-12 border-t border-neutral-200 bg-neutral-50/50" id="support">
         <div className="max-w-6xl mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-16">
@@ -718,7 +633,7 @@ export default function HeroPage() {
               Служба заботы и консультация
             </h2>
             <p className="text-sm text-neutral-600 mt-3">
-              Есть вопросы или требуется помощь с интеграцией? Ответим в течение 5 минут.
+              Есть вопросы или нужна помощь с подключением? Напишите нам, мы ответим.
             </p>
           </div>
 
@@ -726,21 +641,15 @@ export default function HeroPage() {
         </div>
       </section>
 
-      {/* ========================================================================= */}
-      {/* 9. GLOBAL MONOCHROME FOOTER                                               */}
-      {/* ========================================================================= */}
+      {/* 9. FOOTER */}
       <footer className="border-t border-neutral-200 py-12 px-6 md:px-12 bg-white">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <div className="flex flex-col sm:flex-row items-center gap-3 text-center sm:text-left">
             <div className="flex items-center gap-2">
               <BrandLogo className="w-6 h-6" />
-              <span className="text-sm font-semibold text-black tracking-tight">
-                Apex
-              </span>
+              <span className="text-sm font-semibold text-black tracking-tight">Apex</span>
             </div>
-            <span className="text-xs text-neutral-400">
-              © {new Date().getFullYear()} Все права защищены.
-            </span>
+            <span className="text-xs text-neutral-400">© {new Date().getFullYear()} Все права защищены.</span>
             <span className="hidden sm:inline text-neutral-300">•</span>
             <span className="text-xs text-neutral-600">
               Самозанятый Бенаи Тимур Рустамович, ИНН: 920159216794
@@ -748,27 +657,15 @@ export default function HeroPage() {
           </div>
 
           <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-neutral-600">
-            <a href="#demo-chat" className="hover:text-black transition-colors">
-              Демо-чат
-            </a>
-            <a href="#features" className="hover:text-black transition-colors">
-              Возможности
-            </a>
-            <a href="#how-it-works" className="hover:text-black transition-colors">
-              Процесс
-            </a>
-            <a href="#pricing" className="hover:text-black transition-colors">
-              Тарифы
-            </a>
-            <a href="#support" className="hover:text-black transition-colors">
-              Поддержка
-            </a>
+            <a href="#demo-chat" className="hover:text-black transition-colors">Демо-чат</a>
+            <a href="#features" className="hover:text-black transition-colors">Возможности</a>
+            <a href="#how-it-works" className="hover:text-black transition-colors">Процесс</a>
+            <a href="#pricing" className="hover:text-black transition-colors">Тарифы</a>
+            <a href="#support" className="hover:text-black transition-colors">Поддержка</a>
             <Link href="/offer" className="font-medium text-neutral-900 hover:text-black underline underline-offset-4 transition-colors">
               Публичная оферта
             </Link>
-            <Link href="/dashboard" className="font-semibold text-black hover:underline">
-              Дашборд
-            </Link>
+            <Link href="/dashboard" className="font-semibold text-black hover:underline">Дашборд</Link>
           </div>
         </div>
       </footer>

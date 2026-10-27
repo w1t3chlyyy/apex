@@ -5,13 +5,18 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 /**
- * Защищено секретом: Vercel Cron вызывает этот URL с ?secret=CRON_SECRET
- * (см. vercel.json). Если CRON_SECRET не задан в .env — проверка отключена
- * (не рекомендуется для продакшена).
+ * Защита: CRON_SECRET обязателен. Vercel Cron сам шлёт заголовок
+ * "Authorization: Bearer <CRON_SECRET>"; для совместимости со старым
+ * vercel.json принимается и ?secret=<CRON_SECRET>.
  */
 export async function GET(req: NextRequest) {
-  const secret = req.nextUrl.searchParams.get("secret");
-  if (process.env.CRON_SECRET && secret !== process.env.CRON_SECRET) {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET не задан" }, { status: 503 });
+  }
+  const bearer = req.headers.get("authorization");
+  const query = req.nextUrl.searchParams.get("secret");
+  if (bearer !== `Bearer ${secret}` && query !== secret) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

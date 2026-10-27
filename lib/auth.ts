@@ -16,12 +16,9 @@ export interface TelegramSessionStatus {
 }
 
 const STORAGE_KEY = "apex_auth_user";
-const COOKIE_NAME = "apex_auth_session";
 
-// 180 дней — чтобы пользователь не переавторизовывался при каждом визите
-// (раньше было 30 дней). Значение синхронизировано с maxAge cookie на
-// сервере в app/api/auth/email, app/api/auth/telegram и
-// app/api/auth/telegram-session.
+// 180 дней. Cookie сессии выдаёт ТОЛЬКО сервер (подписанная, httpOnly) —
+// см. lib/session-token.ts. Клиент хранит лишь копию профиля для отображения.
 export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 180;
 
 export function getClientUser(): AuthUser | null {
@@ -39,13 +36,7 @@ export function setClientUser(user: AuthUser | null) {
   if (typeof window === "undefined") return;
   if (!user) {
     localStorage.removeItem(STORAGE_KEY);
-    document.cookie = `${COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
   } else {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
-    // Пишем тот же полный объект, что вернул сервер, чтобы не затирать
-    // email/telegramId урезанной версией.
-    document.cookie = `${COOKIE_NAME}=${encodeURIComponent(
-      JSON.stringify(user)
-    )}; Path=/; Max-Age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax`;
   }
 }

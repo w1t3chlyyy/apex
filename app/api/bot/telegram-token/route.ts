@@ -4,9 +4,8 @@ import { getBotByOwner, upsertBotForOwner } from "@/lib/bots";
 
 export const runtime = "nodejs";
 
-// URL Python-сервиса (bot.py) с RAG-логикой. Именно туда, а не в Next.js,
-// теперь регистрируется вебхук бота-агента конкретного пользователя.
 const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "";
+const TOKEN_RE = /^\d{5,}:[A-Za-z0-9_-]{30,}$/;
 
 export async function GET(req: NextRequest) {
   const user = getCurrentUserFromRequest(req);
@@ -28,13 +27,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Необходимо авторизоваться в личном кабинете" }, { status: 401 });
   }
 
+  // Без Telegram ID владельца бот не сможет присылать уведомления об
+  // эскалации и отличать ваши сообщения клиентам от сообщений клиентов.
+  if (!user.telegramId) {
+    return NextResponse.json(
+      {
+        error:
+          "Для подключения бота войдите в кабинет через Telegram — туда приходят уведомления, когда нужен ответ оператора.",
+      },
+      { status: 400 }
+    );
+  }
+
   try {
-    const { token } = await req.json();
-    if (!token || typeof token !== "string") {
+    const { token: rawToken } = await req.json();
+    const token = typeof rawToken === "string" ? rawToken.trim() : "";
+    if (!token) {
       return NextResponse.json({ error: "token required" }, { status: 400 });
     }
+    if (!TOKEN_RE.test(token)) {
+      return NextResponse.json(
+        { error: "Неверный формат токена. Он выглядит как 1234567890:ABC... (из @BotFather)" },
+        { status: 400 }
+      );
+    }
 
-    // Проверяем токен через Telegram API
     let botInfo: { id?: number; username?: string } = {};
     try {
       const checkResponse = await fetch(`https://api.telegram.org/bot${token}/getMe`);
@@ -53,20 +70,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Сохраняем бота, привязанного к ТЕКУЩЕМУ пользователю (не singleton).
     const bot = await upsertBotForOwner(user.id, {
       botApiToken: token,
-      ownerTelegramId: user.telegramId ?? null,
+      ownerTelegramId: user.telegramId,
     });
 
-    // Регистрируем вебхук на PYTHON-сервисе — там живёт RAG-логика агента,
-    // а не на /api/bot/webhook в Next.js (это отдельный сервисный бот).
     let webhookSet = false;
     let webhookError: string | undefined;
+    const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
 
     if (!PYTHON_SERVICE_URL) {
-      webhookError =
-        "PYTHON_SERVICE_URL не задан в .env — вебхук RAG-сервиса не был зарегистрирован автоматически";
+      webhookError = "PYTHON_SERVICE_URL не задан — вебхук RAG-сервиса не зарегистрирован";
+      console.warn(`[telegram-token] ${webhookError}`);
+    } else if (!webhookSecret) {
+      webhookError = "TELEGRAM_WEBHOOK_SECRET не задан — вебхук не зарегистрирован (без секрета сервис отклоняет запросы)";
       console.warn(`[telegram-token] ${webhookError}`);
     } else {
       try {
@@ -76,11 +93,8 @@ export async function POST(req: NextRequest) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             url: webhookUrl,
-            secret_token: process.env.TELEGRAM_WEBHOOK_SECRET || undefined,
-            // КРИТИЧНО: без явного allowed_updates Telegram НЕ присылает
-            // события Telegram Business (business_connection/business_message
-            // и т.д.) на вебхук — они не входят в набор обновлений по
-            // умолчанию. Из-за этого бот "не видел" сообщения клиентов.
+            secret_token: webhookSecret,
+            // Без allowed_updates Telegram не присылает события Business.
             allowed_updates: [
               "message",
               "business_connection",
@@ -93,7 +107,6 @@ export async function POST(req: NextRequest) {
 
         const data = await res.json();
         webhookSet = !!data.ok;
-
         if (!data.ok) {
           webhookError = data.description;
           console.error(`[telegram-token] Ошибка установки вебхука: ${webhookError}`);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { confirmTelegramSession, getTelegramSession } from "@/lib/session-store";
 import { registerTelegramUser } from "@/lib/telegram-registry";
 import { createServiceClient } from "@/lib/supabase/server";
+import { setPending, getPending, deletePending } from "@/lib/pending-store";
 import type { AuthUser } from "@/lib/auth";
 import {
   isAdminTelegramId,
@@ -16,25 +17,19 @@ import {
   type SubscriptionPlan,
 } from "@/lib/admin";
 
-// ВАЖНО: это ЕДИНСТВЕННЫЙ вебхук сервисного бота (авторизация + админ-панель).
-// У одного Telegram-бота может быть только ОДИН webhook URL, а сервисный
-// бот отвечает за: (1) вход в личный кабинет по /start auth_xxx, (2)
-// пересылку ответа владельца клиенту при эскалации диалога, (3) админ-панель
-// (доступна только Telegram ID из ADMIN_TELEGRAM_IDS) — теперь в первую
-// очередь через инлайн-кнопки (/admin открывает меню), а текстовые команды
-// (/broadcast, /addplan, /editplan и т.д.) остаются рабочими как запасной
-// вариант для тех, кто предпочитает печатать команды руками.
+export const runtime = "nodejs";
+
+// ЕДИНСТВЕННЫЙ вебхук сервисного бота: (1) вход в кабинет по /start auth_xxx,
+// (2) ответ владельца клиенту при эскалации, (3) админ-панель (ADMIN_TELEGRAM_IDS).
+// Состояние многошаговых сценариев хранится в Supabase (lib/pending-store.ts),
+// а не в памяти: на serverless следующее сообщение может прийти в другой инстанс.
 const SERVICE_BOT_TOKEN = process.env.TELEGRAM_SERVICE_BOT_TOKEN || "";
 
 type TelegramUpdate = {
   message?: {
     text?: string;
     chat: { id: number };
-    from?: {
-      id: number;
-      first_name?: string;
-      username?: string;
-    };
+    from?: { id: number; first_name?: string; username?: string };
   };
   callback_query?: {
     id: string;
@@ -57,52 +52,36 @@ async function tgCall(token: string, method: string, payload: Record<string, unk
   return res.json();
 }
 
-const globalPending = globalThis as unknown as {
-  __apexPendingReplies?: Map<number, { conversationId: string }>;
-};
-if (!globalPending.__apexPendingReplies) {
-  globalPending.__apexPendingReplies = new Map();
-}
-const pendingReplies = globalPending.__apexPendingReplies;
+// --- Хранилище состояния -----------------------------------------------
 
-// ---------------------------------------------------------------------------
-// Состояние "многошаговых" сценариев админ-панели (ожидание текстового
-// ввода после нажатия инлайн-кнопки, например "введите новую цену").
-// Ключ — telegram_id администратора (в приватном чате с ботом это же
-// значение, что и chat_id).
-// ---------------------------------------------------------------------------
+type OwnerReplyState = { conversationId: string };
 
 type AdminPendingAction =
   | { type: "broadcast" }
   | { type: "add_plan_id" }
   | { type: "add_plan_price"; id: string }
   | { type: "add_plan_name"; id: string; price: number }
-  | {
-      type: "edit_field";
-      planId: string;
-      field: "name" | "price" | "description" | "messages" | "bots";
-    }
+  | { type: "edit_field"; planId: string; field: "name" | "price" | "description" | "messages" | "bots" }
   | { type: "set_features"; planId: string }
   | { type: "setplan_id" };
 
-const globalAdminPending = globalThis as unknown as {
-  __apexAdminPendingActions?: Map<number, AdminPendingAction>;
-};
-if (!globalAdminPending.__apexAdminPendingActions) {
-  globalAdminPending.__apexAdminPendingActions = new Map();
-}
-const pendingAdminActions = globalAdminPending.__apexAdminPendingActions;
+const getReply = (id: number) => getPending<OwnerReplyState>(`reply:${id}`);
+const setReply = (id: number, s: OwnerReplyState) => setPending(`reply:${id}`, s);
+const delReply = (id: number) => deletePending(`reply:${id}`);
+
+const getAdmin = (id: number) => getPending<AdminPendingAction>(`admin:${id}`);
+const setAdmin = (id: number, a: AdminPendingAction) => setPending(`admin:${id}`, a);
+const delAdmin = (id: number) => deletePending(`admin:${id}`);
+
+// --- Ответ владельца клиенту -------------------------------------------
 
 async function handleOwnerCallback(callback: NonNullable<TelegramUpdate["callback_query"]>) {
   const data = callback.data || "";
   const ownerId = callback.from.id;
 
   if (data.startsWith("reply:")) {
-    // Раньше здесь ошибочно вызывался data.split(":", 1)[1], который с
-    // limit=1 всегда возвращает undefined — реально работало только
-    // благодаря fallback на data.slice(...). Убрали лишний/некорректный код.
     const conversationId = data.slice("reply:".length);
-    pendingReplies.set(ownerId, { conversationId });
+    await setReply(ownerId, { conversationId });
     await tgCall(SERVICE_BOT_TOKEN, "sendMessage", {
       chat_id: ownerId,
       text: "Введите ответ для клиента одним сообщением:",
@@ -113,7 +92,7 @@ async function handleOwnerCallback(callback: NonNullable<TelegramUpdate["callbac
 }
 
 async function handleOwnerReplyText(ownerId: number, text: string) {
-  const pending = pendingReplies.get(ownerId);
+  const pending = await getReply(ownerId);
   if (!pending) return false;
 
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -130,12 +109,20 @@ async function handleOwnerReplyText(ownerId: number, text: string) {
 
   if (error || !conv) {
     console.warn("[auth bot webhook] Диалог не найден:", error?.message);
-    pendingReplies.delete(ownerId);
+    await delReply(ownerId);
     return true;
   }
 
-  const botRow = conv.bots as { bot_api_token: string } | null;
-  if (botRow?.bot_api_token && conv.business_connection_id) {
+  const botRow = conv.bots as { bot_api_token: string; owner_telegram_id: number | null } | null;
+
+  // Отвечать может только владелец бота этого диалога.
+  if (!botRow || Number(botRow.owner_telegram_id) !== ownerId) {
+    console.warn("[auth bot webhook] Попытка ответа не владельцем бота");
+    await delReply(ownerId);
+    return true;
+  }
+
+  if (botRow.bot_api_token && conv.business_connection_id) {
     await tgCall(botRow.bot_api_token, "sendMessage", {
       business_connection_id: conv.business_connection_id,
       chat_id: conv.customer_chat_id,
@@ -150,7 +137,7 @@ async function handleOwnerReplyText(ownerId: number, text: string) {
   });
   await supabase.from("conversations").update({ status: "human_takeover" }).eq("id", pending.conversationId);
 
-  pendingReplies.delete(ownerId);
+  await delReply(ownerId);
   await tgCall(SERVICE_BOT_TOKEN, "sendMessage", { chat_id: ownerId, text: "Ответ отправлен клиенту ✅" });
   return true;
 }
@@ -173,25 +160,15 @@ async function sendTelegramMessage(
         ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
       }),
     });
-
     if (!response.ok) {
-      const errorData = await response.json();
-      console.warn("[auth bot webhook] Ошибка при отправке сообщения:", errorData);
+      console.warn("[auth bot webhook] Ошибка при отправке сообщения:", await response.json());
     }
   } catch (err) {
     console.warn("[auth bot webhook] Не удалось отправить сообщение в Telegram:", err);
   }
 }
 
-// Пытается отредактировать существующее сообщение (чтобы навигация по меню
-// не заваливала чат новыми сообщениями), а если это невозможно (например,
-// сообщение слишком старое или его текст не изменился) — просто шлёт новое.
-async function editOrSend(
-  chatId: number,
-  messageId: number | undefined,
-  text: string,
-  keyboard: InlineKeyboard
-) {
+async function editOrSend(chatId: number, messageId: number | undefined, text: string, keyboard: InlineKeyboard) {
   if (messageId) {
     const res = await tgCall(SERVICE_BOT_TOKEN, "editMessageText", {
       chat_id: chatId,
@@ -205,9 +182,7 @@ async function editOrSend(
   await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, text, true, keyboard);
 }
 
-// ---------------------------------------------------------------------------
-// Инлайн-клавиатуры админ-панели
-// ---------------------------------------------------------------------------
+// --- Клавиатуры админ-панели -------------------------------------------
 
 const ADMIN_MENU_TEXT = "🛠 <b>Админ-панель</b>\n\nВыберите действие:";
 
@@ -267,7 +242,7 @@ function fieldChoiceKeyboard(planId: string): InlineKeyboard {
       ],
       [{ text: "Описание", callback_data: `adm:ef:${planId}:description` }],
       [
-        { text: "Лимит сообщений", callback_data: `adm:ef:${planId}:messages` },
+        { text: "Лимит ответов ИИ", callback_data: `adm:ef:${planId}:messages` },
         { text: "Лимит ботов", callback_data: `adm:ef:${planId}:bots` },
       ],
       [{ text: "⬅️ Назад к тарифу", callback_data: `adm:plan:${planId}` }],
@@ -301,7 +276,7 @@ function planDetailText(plan: SubscriptionPlan): string {
   return (
     `<b>${plan.name}</b> (<code>${plan.id}</code>)${plan.highlighted ? " ⭐" : ""}\n` +
     `Цена: <b>${plan.priceRub}₽/мес</b>\n` +
-    `Сообщений: ${msgs}\n` +
+    `Ответов ИИ за 30 дней: ${msgs}\n` +
     `Ботов: ${bots}\n` +
     `Описание: ${plan.description || "—"}\n\n` +
     `Возможности:\n${featuresText}\n\n` +
@@ -318,9 +293,6 @@ async function sendOrEditPlanDetail(chatId: number, messageId: number | undefine
   await editOrSend(chatId, messageId, planDetailText(plan), planDetailKeyboard(plan));
 }
 
-// Аналог sendOrEditPlanDetail, но всегда шлёт новое сообщение — используется
-// после завершения текстового шага сценария (когда нет message_id кнопки,
-// на которую можно ответить editMessageText).
 async function sendPlanDetail(chatId: number, planId: string) {
   const plan = await getPlanById(planId);
   if (!plan) return;
@@ -331,17 +303,15 @@ const EDIT_FIELD_PROMPTS: Record<string, string> = {
   name: "Введите новое название тарифа:",
   price: "Введите новую цену в рублях (только число):",
   description: "Введите новое описание тарифа:",
-  messages: "Введите лимит сообщений в месяц (число или «-» для безлимита):",
+  messages: "Введите лимит ответов ИИ за 30 дней (число или «-» для безлимита):",
   bots: "Введите лимит ботов (число или «-» для безлимита):",
 };
 
-// ---------------------------------------------------------------------------
-// Обработка нажатий инлайн-кнопок админ-панели (callback_data вида "adm:...")
-// ---------------------------------------------------------------------------
+// --- Кнопки админ-панели ------------------------------------------------
 
 async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callback_query"]>) {
   const data = callback.data || "";
-  const chatId = callback.from.id; // приватный чат с ботом: chat_id === telegram_id
+  const chatId = callback.from.id;
   const messageId = callback.message?.message_id;
   const parts = data.split(":");
   const action = parts[1];
@@ -360,20 +330,18 @@ async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callbac
     } else if (action === "plan") {
       await sendOrEditPlanDetail(chatId, messageId, parts[2]);
     } else if (action === "field") {
-      const planId = parts[2];
-      await editOrSend(chatId, messageId, "Что именно изменить?", fieldChoiceKeyboard(planId));
+      await editOrSend(chatId, messageId, "Что именно изменить?", fieldChoiceKeyboard(parts[2]));
     } else if (action === "ef") {
       const planId = parts[2];
       const field = parts[3] as "name" | "price" | "description" | "messages" | "bots";
-      pendingAdminActions.set(chatId, { type: "edit_field", planId, field });
+      await setAdmin(chatId, { type: "edit_field", planId, field });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
         chatId,
         `${EDIT_FIELD_PROMPTS[field] || "Введите новое значение:"}\n\n(или /cancel для отмены)`
       );
     } else if (action === "feat") {
-      const planId = parts[2];
-      pendingAdminActions.set(chatId, { type: "set_features", planId });
+      await setAdmin(chatId, { type: "set_features", planId: parts[2] });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
         chatId,
@@ -382,18 +350,11 @@ async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callbac
     } else if (action === "hl") {
       const planId = parts[2];
       const plan = await getPlanById(planId);
-      if (plan) {
-        await upsertPlan({ id: planId, highlighted: !plan.highlighted });
-      }
+      if (plan) await upsertPlan({ id: planId, highlighted: !plan.highlighted });
       await sendOrEditPlanDetail(chatId, messageId, planId);
     } else if (action === "del") {
       const planId = parts[2];
-      await editOrSend(
-        chatId,
-        messageId,
-        `Удалить тариф «${planId}»? Это действие необратимо.`,
-        confirmDeleteKeyboard(planId)
-      );
+      await editOrSend(chatId, messageId, `Удалить тариф «${planId}»? Это действие необратимо.`, confirmDeleteKeyboard(planId));
     } else if (action === "delyes") {
       const planId = parts[2];
       await deletePlan(planId);
@@ -402,14 +363,14 @@ async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callbac
     } else if (action === "delno") {
       await sendOrEditPlanDetail(chatId, messageId, parts[2]);
     } else if (action === "addplan") {
-      pendingAdminActions.set(chatId, { type: "add_plan_id" });
+      await setAdmin(chatId, { type: "add_plan_id" });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
         chatId,
         "Введите ID нового тарифа — латиницей, без пробелов (например: pro).\n\n(или /cancel для отмены)"
       );
     } else if (action === "broadcast") {
-      pendingAdminActions.set(chatId, { type: "broadcast" });
+      await setAdmin(chatId, { type: "broadcast" });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
         chatId,
@@ -424,7 +385,7 @@ async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callbac
         backToMenuKeyboard()
       );
     } else if (action === "setplan") {
-      pendingAdminActions.set(chatId, { type: "setplan_id" });
+      await setAdmin(chatId, { type: "setplan_id" });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
         chatId,
@@ -454,23 +415,21 @@ async function handleAdminCallback(callback: NonNullable<TelegramUpdate["callbac
   await tgCall(SERVICE_BOT_TOKEN, "answerCallbackQuery", { callback_query_id: callback.id });
 }
 
-// Обрабатывает текстовый ввод, когда у администратора есть незавершённый
-// сценарий (после нажатия кнопки, ожидающей значение). Возвращает true,
-// если сообщение было "поглощено" этим сценарием.
+// Текстовый ввод в многошаговых сценариях. true = сообщение «поглощено».
 async function handleAdminPendingText(fromId: number, chatId: number, text: string): Promise<boolean> {
   if (!isAdminTelegramId(fromId)) return false;
-  const pending = pendingAdminActions.get(fromId);
+  const pending = await getAdmin(fromId);
   if (!pending) return false;
 
   if (text.trim() === "/cancel") {
-    pendingAdminActions.delete(fromId);
+    await delAdmin(fromId);
     await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Действие отменено.", false, backToMenuKeyboard());
     return true;
   }
 
   switch (pending.type) {
     case "broadcast": {
-      pendingAdminActions.delete(fromId);
+      await delAdmin(fromId);
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Рассылка запущена, это может занять некоторое время…");
       const result = await broadcastToAllUsers(SERVICE_BOT_TOKEN, text);
       await sendTelegramMessage(
@@ -489,12 +448,11 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "ID не может быть пустым. Введите ID тарифа:");
         return true;
       }
-      const existing = await getPlanById(id);
-      if (existing) {
+      if (await getPlanById(id)) {
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Тариф «${id}» уже существует. Введите другой ID:`);
         return true;
       }
-      pendingAdminActions.set(fromId, { type: "add_plan_price", id });
+      await setAdmin(fromId, { type: "add_plan_price", id });
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Введите цену тарифа в рублях (число):");
       return true;
     }
@@ -505,7 +463,7 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Цена должна быть числом. Попробуйте снова:");
         return true;
       }
-      pendingAdminActions.set(fromId, { type: "add_plan_name", id: pending.id, price });
+      await setAdmin(fromId, { type: "add_plan_name", id: pending.id, price });
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Введите название тарифа:");
       return true;
     }
@@ -516,7 +474,7 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Название не может быть пустым. Введите название:");
         return true;
       }
-      pendingAdminActions.delete(fromId);
+      await delAdmin(fromId);
       const plan = await upsertPlan({ id: pending.id, name, priceRub: pending.price });
       await sendTelegramMessage(
         SERVICE_BOT_TOKEN,
@@ -542,31 +500,22 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         patch.priceRub = v;
       } else if (pending.field === "description") {
         patch.description = raw;
-      } else if (pending.field === "messages") {
+      } else if (pending.field === "messages" || pending.field === "bots") {
+        let value: number;
         if (raw === "-") {
-          patch.messagesLimit = Infinity;
+          value = Infinity;
         } else {
-          const n = parseInt(raw, 10);
-          if (Number.isNaN(n)) {
+          value = parseInt(raw, 10);
+          if (Number.isNaN(value)) {
             await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Введите число или «-» для безлимита:");
             return true;
           }
-          patch.messagesLimit = n;
         }
-      } else if (pending.field === "bots") {
-        if (raw === "-") {
-          patch.botsLimit = Infinity;
-        } else {
-          const n = parseInt(raw, 10);
-          if (Number.isNaN(n)) {
-            await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Введите число или «-» для безлимита:");
-            return true;
-          }
-          patch.botsLimit = n;
-        }
+        if (pending.field === "messages") patch.messagesLimit = value;
+        else patch.botsLimit = value;
       }
 
-      pendingAdminActions.delete(fromId);
+      await delAdmin(fromId);
       const updated = await upsertPlan(patch);
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Готово ✅ Тариф «${updated.name}» обновлён.`);
       await sendPlanDetail(chatId, updated.id);
@@ -579,14 +528,10 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         .map((f) => f.replace(/^[-•*]\s*/, "").trim())
         .filter(Boolean);
       if (features.length === 0) {
-        await sendTelegramMessage(
-          SERVICE_BOT_TOKEN,
-          chatId,
-          "Список пуст. Отправьте хотя бы один пункт (каждый с новой строки):"
-        );
+        await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Список пуст. Отправьте хотя бы один пункт (каждый с новой строки):");
         return true;
       }
-      pendingAdminActions.delete(fromId);
+      await delAdmin(fromId);
       const updated = await upsertPlan({ id: pending.planId, features });
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Возможности тарифа «${updated.name}» обновлены ✅`);
       await sendPlanDetail(chatId, updated.id);
@@ -599,7 +544,7 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Введите корректный Telegram ID (число):");
         return true;
       }
-      pendingAdminActions.delete(fromId);
+      await delAdmin(fromId);
       const plans = await getPlans();
       if (plans.length === 0) {
         await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Сначала создайте хотя бы один тариф.", false, backToMenuKeyboard());
@@ -619,17 +564,11 @@ async function handleAdminPendingText(fromId: number, chatId: number, text: stri
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// АДМИН-ПАНЕЛЬ: текстовые команды (доступны только Telegram ID из
-// ADMIN_TELEGRAM_IDS в .env). /admin теперь открывает инлайн-меню; все
-// остальные команды остаются рабочими для тех, кто предпочитает их
-// набирать вручную.
-// ---------------------------------------------------------------------------
+// --- Текстовые команды админа (запасной вариант) -------------------------
 
 const ADMIN_HELP =
   "<b>Текстовые команды (запасной вариант)</b>\n\n" +
-  "Проще пользоваться кнопками из /admin — они делают то же самое без " +
-  "запоминания синтаксиса. Но команды тоже работают:\n\n" +
+  "Проще пользоваться кнопками из /admin. Команды тоже работают:\n\n" +
   "/admin — открыть меню с кнопками\n" +
   "/broadcast &lt;текст&gt; — рассылка всем пользователям сайта\n" +
   "/stats — количество зарегистрированных пользователей\n\n" +
@@ -639,16 +578,14 @@ const ADMIN_HELP =
   "/addplan &lt;id&gt; &lt;цена&gt; &lt;название&gt; — создать тариф\n" +
   "  пример: /addplan pro 5990 Профи\n" +
   "/editplan &lt;id&gt; &lt;поле&gt; &lt;значение&gt; — изменить тариф\n" +
-  "  поля: name, price, description, messages, bots, highlight\n" +
+  "  поля: name, price, description, messages (ответов ИИ за 30 дней), bots, highlight\n" +
   "  для messages/bots значение «-» означает безлимит\n" +
   "  highlight: 1 — выделить тариф на сайте, 0 — снять выделение\n" +
   "  примеры:\n" +
   "    /editplan business price 4990\n" +
-  "    /editplan business description Для растущего бизнеса\n" +
   "    /editplan business messages -\n" +
   "/setfeatures &lt;id&gt; &lt;пункт1&gt;|&lt;пункт2&gt;|&lt;пункт3&gt; — список " +
   "возможностей тарифа (полностью заменяет старый)\n" +
-  "  пример: /setfeatures start До 50 сообщений|1 бот|Базовая аналитика\n" +
   "/removeplan &lt;id&gt; — удалить тариф\n\n" +
   "<b>Подписки пользователей</b>:\n" +
   "/setplan &lt;telegram_id&gt; &lt;planId&gt; — активировать/продлить тариф на 30 дней\n";
@@ -685,8 +622,6 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
     return true;
   }
 
-  // --- Тарифы ---------------------------------------------------------
-
   if (command === "/plans") {
     const list = await formatPlansList();
     await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `<b>Тарифы:</b>\n${list}`, true);
@@ -722,14 +657,8 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
       );
       return true;
     }
-
-    const existing = await getPlanById(planId);
-    if (existing) {
-      await sendTelegramMessage(
-        SERVICE_BOT_TOKEN,
-        chatId,
-        `Тариф «${planId}» уже существует, используйте /editplan для изменения`
-      );
+    if (await getPlanById(planId)) {
+      await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Тариф «${planId}» уже существует, используйте /editplan для изменения`);
       return true;
     }
 
@@ -756,9 +685,7 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
       );
       return true;
     }
-
-    const existing = await getPlanById(planId);
-    if (!existing) {
+    if (!(await getPlanById(planId))) {
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Тариф «${planId}» не найден`);
       return true;
     }
@@ -787,30 +714,20 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
         patch.description = rawValue;
         break;
       }
-      case "messages": {
-        if (rawValue === "-") {
-          patch.messagesLimit = Infinity;
-        } else {
-          const n = parseInt(rawValue, 10);
-          if (Number.isNaN(n)) {
-            await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Значение должно быть числом или «-» для безлимита");
-            return true;
-          }
-          patch.messagesLimit = n;
-        }
-        break;
-      }
+      case "messages":
       case "bots": {
+        let value: number;
         if (rawValue === "-") {
-          patch.botsLimit = Infinity;
+          value = Infinity;
         } else {
-          const n = parseInt(rawValue, 10);
-          if (Number.isNaN(n)) {
+          value = parseInt(rawValue, 10);
+          if (Number.isNaN(value)) {
             await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Значение должно быть числом или «-» для безлимита");
             return true;
           }
-          patch.botsLimit = n;
         }
+        if (field === "messages") patch.messagesLimit = value;
+        else patch.botsLimit = value;
         break;
       }
       case "highlight": {
@@ -841,22 +758,13 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
     const firstSpace = rest.indexOf(" ");
     const planId = (firstSpace === -1 ? rest : rest.slice(0, firstSpace)).trim();
     const featuresRaw = firstSpace === -1 ? "" : rest.slice(firstSpace + 1).trim();
-    const features = featuresRaw
-      .split("|")
-      .map((f) => f.trim())
-      .filter(Boolean);
+    const features = featuresRaw.split("|").map((f) => f.trim()).filter(Boolean);
 
     if (!planId || features.length === 0) {
-      await sendTelegramMessage(
-        SERVICE_BOT_TOKEN,
-        chatId,
-        "Использование: /setfeatures <id> <пункт1>|<пункт2>|<пункт3>"
-      );
+      await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, "Использование: /setfeatures <id> <пункт1>|<пункт2>|<пункт3>");
       return true;
     }
-
-    const existing = await getPlanById(planId);
-    if (!existing) {
+    if (!(await getPlanById(planId))) {
       await sendTelegramMessage(SERVICE_BOT_TOKEN, chatId, `Тариф «${planId}» не найден`);
       return true;
     }
@@ -880,8 +788,6 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
     );
     return true;
   }
-
-  // --- Подписки пользователей ------------------------------------------
 
   if (command === "/setplan") {
     const parts = text.split(/\s+/).slice(1);
@@ -942,7 +848,6 @@ export async function POST(req: NextRequest) {
     }
 
     const message = update.message;
-
     if (!message?.text || !message.from) {
       return NextResponse.json({ ok: true });
     }
@@ -950,20 +855,17 @@ export async function POST(req: NextRequest) {
     const text = message.text.trim();
     const chatId = message.chat.id;
 
-    // Команды (начинающиеся с "/") всегда прерывают любой незавершённый
-    // сценарий админ-панели — иначе, например, "/admin" посреди ввода цены
-    // тарифа было бы воспринято как значение цены.
+    // Команда ("/...") прерывает любой незавершённый сценарий админ-панели.
     if (text.startsWith("/")) {
-      pendingAdminActions.delete(message.from.id);
-      const handledAsAdmin = await handleAdminCommand(message.from.id, chatId, text);
-      if (handledAsAdmin) return NextResponse.json({ ok: true });
-    } else {
-      const handledAsAdminFlow = await handleAdminPendingText(message.from.id, chatId, text);
-      if (handledAsAdminFlow) return NextResponse.json({ ok: true });
+      await delAdmin(message.from.id);
+      if (await handleAdminCommand(message.from.id, chatId, text)) {
+        return NextResponse.json({ ok: true });
+      }
+    } else if (await handleAdminPendingText(message.from.id, chatId, text)) {
+      return NextResponse.json({ ok: true });
     }
 
-    const handledAsOwnerReply = await handleOwnerReplyText(message.from.id, text);
-    if (handledAsOwnerReply) {
+    if (await handleOwnerReplyText(message.from.id, text)) {
       return NextResponse.json({ ok: true });
     }
 
@@ -999,7 +901,6 @@ export async function POST(req: NextRequest) {
         chatId,
         "Готово! Вход на сайте подтверждён — вернитесь на вкладку с сайтом, она обновится автоматически."
       );
-
       return NextResponse.json({ ok: true });
     }
 

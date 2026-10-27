@@ -1,23 +1,13 @@
 import { createServiceClient } from "./supabase/server";
 
 /**
- * Бот-агент КОНКРЕТНОГО пользователя личного кабинета (не путать с сервисным
- * ботом авторизации/админ-панели — тот один на весь сервис, хранится в .env
- * как TELEGRAM_SERVICE_BOT_TOKEN, к этому файлу отношения не имеет).
- *
- * Добавлены поля ежемесячной подписки (planId + даты начала/окончания) —
- * управляются из /dashboard/billing и из админ-панели служебного бота
- * (см. lib/admin.ts, lib/subscriptions.ts).
- *
- * freeTokensUsed — счётчик потраченных токенов ответов ИИ для владельцев
- * БЕЗ платного тарифа (planId === null). Ведётся Python-сервисом (main.py)
- * напрямую в Supabase — здесь только читается, чтобы показать прогресс в
- * личном кабинете (см. app/api/bot/subscription, app/dashboard/billing).
- * FREE_TIER_TOKEN_LIMIT должен совпадать со значением переменной окружения
- * FREE_TIER_TOKEN_LIMIT в Python-сервисе (.env), иначе прогресс-бар в
- * дашборде будет показывать неверный процент.
+ * Бот-агент КОНКРЕТНОГО пользователя личного кабинета (не сервисный бот).
+ * free_tokens_used и ai_replies_* ведёт Python-сервис (main.py) напрямую в
+ * Supabase; здесь они читаются и (ai_replies_*) сбрасываются только при
+ * явной передаче в patch.
  */
-export const FREE_TIER_TOKEN_LIMIT = 25000;
+// Должен совпадать с FREE_TIER_TOKEN_LIMIT в окружении Python-сервиса.
+export const FREE_TIER_TOKEN_LIMIT = Number(process.env.FREE_TIER_TOKEN_LIMIT) || 15000;
 
 export interface UserBot {
   id: string;
@@ -33,15 +23,11 @@ export interface UserBot {
   subscriptionStartedAt: string | null;
   subscriptionExpiresAt: string | null;
   freeTokensUsed: number;
+  aiRepliesUsed: number;
+  aiRepliesPeriodStart: string | null;
 }
 
 const DEFAULTS = {
-  // ИЗМЕНЕНО: раньше дефолтный промпт не диктовал поведение отдельно, но
-  // Python-сервис (main.py) жёстко ограничивал бота ответами строго по
-  // базе знаний и эскалировал всё остальное. Теперь main.py/qwen_client.py
-  // разрешают боту отвечать на любые вопросы (включая бытовые), а
-  // эскалация — крайний случай. Дефолтный промпт обновлён, чтобы не
-  // противоречить новому поведению.
   systemPrompt:
     "Ты — вежливый и компетентный ассистент компании. Приоритетно используй " +
     "базу знаний компании, но свободно отвечай и на общие/бытовые вопросы " +
@@ -53,18 +39,12 @@ const DEFAULTS = {
   confidenceThreshold: 0.75,
 };
 
-const globalStore = globalThis as unknown as {
-  __apexUserBots?: Map<string, UserBot>; // ключ = ownerId
-};
-if (!globalStore.__apexUserBots) {
-  globalStore.__apexUserBots = new Map();
-}
+const globalStore = globalThis as unknown as { __apexUserBots?: Map<string, UserBot> };
+if (!globalStore.__apexUserBots) globalStore.__apexUserBots = new Map();
 const memory = globalStore.__apexUserBots;
 
 function supabaseConfigured() {
-  return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 interface BotRow {
@@ -81,6 +61,8 @@ interface BotRow {
   subscription_started_at?: string | null;
   subscription_expires_at?: string | null;
   free_tokens_used?: number | null;
+  ai_replies_used?: number | null;
+  ai_replies_period_start?: string | null;
 }
 
 function rowToBot(row: BotRow): UserBot {
@@ -92,28 +74,28 @@ function rowToBot(row: BotRow): UserBot {
     systemPrompt: row.system_prompt ?? DEFAULTS.systemPrompt,
     role: row.role ?? DEFAULTS.role,
     confidenceThreshold:
-      typeof row.confidence_threshold === "number"
-        ? row.confidence_threshold
-        : DEFAULTS.confidenceThreshold,
+      typeof row.confidence_threshold === "number" ? row.confidence_threshold : DEFAULTS.confidenceThreshold,
     businessConnectionId: row.business_connection_id ?? null,
     webhookRegistered: Boolean(row.webhook_registered),
     planId: row.plan_id ?? null,
     subscriptionStartedAt: row.subscription_started_at ?? null,
     subscriptionExpiresAt: row.subscription_expires_at ?? null,
     freeTokensUsed: row.free_tokens_used ?? 0,
+    aiRepliesUsed: row.ai_replies_used ?? 0,
+    aiRepliesPeriodStart: row.ai_replies_period_start ?? null,
   };
 }
 
 export async function getBotByOwner(ownerId: string): Promise<UserBot | null> {
   if (supabaseConfigured()) {
     try {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
+      const { data, error } = await createServiceClient()
         .from("bots")
         .select("*")
         .eq("owner_id", ownerId)
         .maybeSingle();
       if (!error) return data ? rowToBot(data) : null;
+      console.warn("[bots] Supabase lookup error:", error.message);
     } catch (err) {
       console.warn("[bots] Supabase lookup failed, falling back to memory:", err);
     }
@@ -124,8 +106,7 @@ export async function getBotByOwner(ownerId: string): Promise<UserBot | null> {
 export async function getBotById(botId: string): Promise<UserBot | null> {
   if (supabaseConfigured()) {
     try {
-      const supabase = createServiceClient();
-      const { data, error } = await supabase
+      const { data, error } = await createServiceClient()
         .from("bots")
         .select("*")
         .eq("id", botId)
@@ -152,12 +133,11 @@ interface BotPatch {
   planId?: string | null;
   subscriptionStartedAt?: string | null;
   subscriptionExpiresAt?: string | null;
+  aiRepliesUsed?: number;
+  aiRepliesPeriodStart?: string | null;
 }
 
-export async function upsertBotForOwner(
-  ownerId: string,
-  patch: BotPatch
-): Promise<UserBot> {
+export async function upsertBotForOwner(ownerId: string, patch: BotPatch): Promise<UserBot> {
   const existing = await getBotByOwner(ownerId);
   const id = existing?.id ?? `bot_${ownerId}_${Date.now()}`;
 
@@ -165,15 +145,10 @@ export async function upsertBotForOwner(
     id,
     ownerId,
     ownerTelegramId:
-      patch.ownerTelegramId !== undefined
-        ? patch.ownerTelegramId
-        : existing?.ownerTelegramId ?? null,
-    botApiToken:
-      patch.botApiToken !== undefined ? patch.botApiToken : existing?.botApiToken ?? null,
+      patch.ownerTelegramId !== undefined ? patch.ownerTelegramId : existing?.ownerTelegramId ?? null,
+    botApiToken: patch.botApiToken !== undefined ? patch.botApiToken : existing?.botApiToken ?? null,
     systemPrompt:
-      patch.systemPrompt !== undefined
-        ? patch.systemPrompt
-        : existing?.systemPrompt ?? DEFAULTS.systemPrompt,
+      patch.systemPrompt !== undefined ? patch.systemPrompt : existing?.systemPrompt ?? DEFAULTS.systemPrompt,
     role: patch.role !== undefined ? patch.role : existing?.role ?? DEFAULTS.role,
     confidenceThreshold:
       patch.confidenceThreshold !== undefined
@@ -184,9 +159,7 @@ export async function upsertBotForOwner(
         ? patch.businessConnectionId
         : existing?.businessConnectionId ?? null,
     webhookRegistered:
-      patch.webhookRegistered !== undefined
-        ? patch.webhookRegistered
-        : existing?.webhookRegistered ?? false,
+      patch.webhookRegistered !== undefined ? patch.webhookRegistered : existing?.webhookRegistered ?? false,
     planId: patch.planId !== undefined ? patch.planId : existing?.planId ?? null,
     subscriptionStartedAt:
       patch.subscriptionStartedAt !== undefined
@@ -196,42 +169,43 @@ export async function upsertBotForOwner(
       patch.subscriptionExpiresAt !== undefined
         ? patch.subscriptionExpiresAt
         : existing?.subscriptionExpiresAt ?? null,
-    // free_tokens_used ведётся Python-сервисом напрямую в Supabase, здесь
-    // не перезаписывается — просто переносим текущее значение, если оно
-    // уже было известно (для in-memory fallback без Supabase).
     freeTokensUsed: existing?.freeTokensUsed ?? 0,
+    aiRepliesUsed: patch.aiRepliesUsed !== undefined ? patch.aiRepliesUsed : existing?.aiRepliesUsed ?? 0,
+    aiRepliesPeriodStart:
+      patch.aiRepliesPeriodStart !== undefined
+        ? patch.aiRepliesPeriodStart
+        : existing?.aiRepliesPeriodStart ?? null,
   };
 
-  memory.set(ownerId, next);
-
   if (supabaseConfigured()) {
-    try {
-      const supabase = createServiceClient();
-      await supabase.from("bots").upsert(
-        {
-          id: next.id,
-          owner_id: next.ownerId,
-          owner_telegram_id: next.ownerTelegramId,
-          bot_api_token: next.botApiToken,
-          system_prompt: next.systemPrompt,
-          role: next.role,
-          confidence_threshold: next.confidenceThreshold,
-          business_connection_id: next.businessConnectionId,
-          webhook_registered: next.webhookRegistered,
-          plan_id: next.planId,
-          subscription_started_at: next.subscriptionStartedAt,
-          subscription_expires_at: next.subscriptionExpiresAt,
-          // free_tokens_used намеренно НЕ включаем в payload — Supabase
-          // upsert трогает только перечисленные колонки, так что при
-          // конфликте (обновлении существующей строки) значение,
-          // записанное Python-сервисом, останется нетронутым.
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("[bots] Supabase upsert failed, using in-memory only:", err);
+    // free_tokens_used и ai_replies_* пишет Python-сервис — в payload они
+    // попадают только если явно переданы (например, сброс при оплате).
+    const payload: Record<string, unknown> = {
+      id: next.id,
+      owner_id: next.ownerId,
+      owner_telegram_id: next.ownerTelegramId,
+      bot_api_token: next.botApiToken,
+      system_prompt: next.systemPrompt,
+      role: next.role,
+      confidence_threshold: next.confidenceThreshold,
+      business_connection_id: next.businessConnectionId,
+      webhook_registered: next.webhookRegistered,
+      plan_id: next.planId,
+      subscription_started_at: next.subscriptionStartedAt,
+      subscription_expires_at: next.subscriptionExpiresAt,
+    };
+    if (patch.aiRepliesUsed !== undefined) payload.ai_replies_used = next.aiRepliesUsed;
+    if (patch.aiRepliesPeriodStart !== undefined) payload.ai_replies_period_start = next.aiRepliesPeriodStart;
+
+    // supabase-js не бросает исключение, а возвращает { error } — раньше это
+    // игнорировалось, и активация тарифа могла «пройти», не сохранившись.
+    const { error } = await createServiceClient().from("bots").upsert(payload, { onConflict: "id" });
+    if (error) {
+      console.error("[bots] Supabase upsert failed:", error.message);
+      throw new Error(`Не удалось сохранить бота: ${error.message}`);
     }
   }
 
+  memory.set(ownerId, next);
   return next;
 }
