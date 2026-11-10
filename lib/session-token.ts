@@ -9,6 +9,10 @@ function getSecret(): string {
   return s;
 }
 
+export function assertSessionSecretConfigured(): void {
+  getSecret();
+}
+
 function hmac(payload: string): Buffer {
   return crypto.createHmac("sha256", getSecret()).update(payload).digest();
 }

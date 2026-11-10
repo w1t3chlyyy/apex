@@ -822,6 +822,10 @@ async function handleAdminCommand(fromId: number, chatId: number, text: string):
 export async function POST(req: NextRequest) {
   try {
     const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (process.env.NODE_ENV === "production" && !expectedSecret) {
+      console.error("[auth bot webhook] TELEGRAM_WEBHOOK_SECRET не задан");
+      return NextResponse.json({ error: "webhook is not configured" }, { status: 503 });
+    }
     if (expectedSecret) {
       const gotSecret = req.headers.get("x-telegram-bot-api-secret-token");
       if (gotSecret !== expectedSecret) {
@@ -832,7 +836,7 @@ export async function POST(req: NextRequest) {
 
     if (!SERVICE_BOT_TOKEN) {
       console.warn("[auth bot webhook] TELEGRAM_SERVICE_BOT_TOKEN не задан в .env");
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ error: "service bot is not configured" }, { status: 503 });
     }
 
     const update = (await req.json()) as TelegramUpdate;
@@ -893,7 +897,15 @@ export async function POST(req: NextRequest) {
         createdAt: new Date().toISOString(),
       };
 
-      await confirmTelegramSession(sessionId, user);
+      const confirmedSession = await confirmTelegramSession(sessionId, user);
+      if (!confirmedSession) {
+        await sendTelegramMessage(
+          SERVICE_BOT_TOKEN,
+          chatId,
+          "Не удалось подтвердить вход: ссылка устарела или сессия уже закрыта. Вернитесь на сайт и создайте новую ссылку."
+        );
+        return NextResponse.json({ ok: true });
+      }
       await registerTelegramUser(user);
 
       await sendTelegramMessage(
@@ -922,7 +934,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   } catch (err) {
     console.error("[auth bot webhook] error", err);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ error: "webhook processing failed" }, { status: 500 });
   }
 }
 

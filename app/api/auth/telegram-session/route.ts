@@ -1,15 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { createTelegramSession, getTelegramSession } from "@/lib/session-store";
-import { SESSION_COOKIE, signSession, sessionCookieOptions } from "@/lib/session-token";
+import {
+  assertSessionSecretConfigured,
+  SESSION_COOKIE,
+  signSession,
+  sessionCookieOptions,
+} from "@/lib/session-token";
 
 export const runtime = "nodejs";
 
 const BOT_USERNAME =
-  process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME || process.env.TELEGRAM_BOT_USERNAME || "AiApexRobot";
+  (process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME ||
+    process.env.TELEGRAM_BOT_USERNAME ||
+    "AiApexRobot").replace(/^@/, "");
 
 export async function POST() {
   try {
+    assertSessionSecretConfigured();
     const sessionId = crypto.randomBytes(16).toString("hex");
     await createTelegramSession(sessionId);
 

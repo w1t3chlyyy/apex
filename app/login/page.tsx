@@ -31,7 +31,7 @@ function LoginForm() {
   const [tgSessionId, setTgSessionId] = useState<string | null>(null);
   const [tgDeepLink, setTgDeepLink] = useState<string>("");
   const [tgBotUsername, setTgBotUsername] = useState<string>("AiApexRobot");
-  const [tgStatus, setTgStatus] = useState<"loading" | "waiting" | "success">("loading");
+  const [tgStatus, setTgStatus] = useState<"loading" | "waiting" | "success" | "error">("loading");
   const [showQr, setShowQr] = useState(false);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -69,18 +69,35 @@ function LoginForm() {
     try {
       setTgStatus("loading");
       setError(null);
+      setTgDeepLink("");
+      setShowQr(false);
       const res = await fetch("/api/auth/telegram-session", { method: "POST" });
       const data = await res.json();
-      if (data.success) {
-        setTgSessionId(data.sessionId);
-        setTgDeepLink(data.deepLink);
-        if (data.botUsername) setTgBotUsername(data.botUsername);
-        setTgStatus("waiting");
-      } else {
-        setError("Не удалось сформировать сессию для Telegram");
+
+      const deepLinkUrl = new URL(data.deepLink || "");
+      const startParameter = deepLinkUrl.searchParams.get("start");
+      if (
+        !res.ok ||
+        !data.success ||
+        typeof data.sessionId !== "string" ||
+        deepLinkUrl.protocol !== "https:" ||
+        deepLinkUrl.hostname !== "t.me" ||
+        startParameter !== `auth_${data.sessionId}`
+      ) {
+        throw new Error(data.error || "Сервис не создал ссылку входа с параметром авторизации.");
       }
-    } catch {
-      setError("Ошибка сети при создании сессии Telegram");
+
+      setTgSessionId(data.sessionId);
+      setTgDeepLink(data.deepLink);
+      if (data.botUsername) setTgBotUsername(data.botUsername);
+      setTgStatus("waiting");
+    } catch (err) {
+      setTgStatus("error");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ошибка сети при создании сессии Telegram"
+      );
     }
   }, []);
 
@@ -92,7 +109,12 @@ function LoginForm() {
 
   // 3. Poll for Telegram confirmation
   useEffect(() => {
-    if (activeTab !== "telegram" || !tgSessionId || tgStatus === "success") {
+    if (
+      activeTab !== "telegram" ||
+      !tgSessionId ||
+      tgStatus === "success" ||
+      tgStatus === "error"
+    ) {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       return;
     }
@@ -179,7 +201,7 @@ function LoginForm() {
     }
   };
 
-  const qrTarget = tgDeepLink || `https://t.me/${tgBotUsername}`;
+  const qrTarget = tgDeepLink;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodeURIComponent(
     qrTarget
   )}`;
@@ -304,26 +326,48 @@ function LoginForm() {
                   </div>
 
                   {/* Primary Action Button */}
-                  <a
-                    href={qrTarget}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full py-3.5 px-4 rounded-xl bg-black text-white text-sm font-semibold hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-sm"
-                  >
-                    <Send className="w-4 h-4" />
-                    <span>Перейти в Telegram-бота</span>
-                    <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-                  </a>
+                  {tgDeepLink ? (
+                    <a
+                      href={tgDeepLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="w-full py-3.5 px-4 rounded-xl bg-black text-white text-sm font-semibold hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Перейти в Telegram-бота для входа</span>
+                      <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={initTelegramSession}
+                      disabled={tgStatus === "loading"}
+                      className="w-full py-3.5 px-4 rounded-xl bg-black text-white text-sm font-semibold hover:bg-neutral-800 disabled:opacity-60 transition-all flex items-center justify-center gap-2 shadow-sm"
+                    >
+                      {tgStatus === "loading" ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      <span>
+                        {tgStatus === "loading"
+                          ? "Создаём ссылку для входа..."
+                          : "Повторить создание ссылки"}
+                      </span>
+                    </button>
+                  )}
 
                   {/* QR Toggle Button */}
-                  <button
-                    type="button"
-                    onClick={() => setShowQr(!showQr)}
-                    className="w-full py-2.5 px-4 rounded-xl border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <QrCode className="w-3.5 h-3.5" />
-                    <span>{showQr ? "Скрыть QR-код" : "Войти через QR-код с телефона"}</span>
-                  </button>
+                  {tgDeepLink && (
+                    <button
+                      type="button"
+                      onClick={() => setShowQr(!showQr)}
+                      className="w-full py-2.5 px-4 rounded-xl border border-neutral-200 text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>{showQr ? "Скрыть QR-код" : "Войти через QR-код с телефона"}</span>
+                    </button>
+                  )}
 
                   {/* QR Code Container — реальный QR, кодирующий deep-link входа */}
                   {showQr && (
@@ -348,10 +392,19 @@ function LoginForm() {
                   <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-xs text-neutral-500">
                     <div className="flex items-center gap-2">
                       <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        <span
+                          className={`relative inline-flex rounded-full h-2 w-2 ${
+                            tgStatus === "error" ? "bg-red-500" : "bg-emerald-500"
+                          }`}
+                        ></span>
                       </span>
-                      <span>Ожидание нажатия в боте...</span>
+                      <span>
+                        {tgStatus === "loading"
+                          ? "Создание ссылки для входа..."
+                          : tgStatus === "error"
+                            ? "Не удалось создать ссылку входа"
+                            : "Ожидание подтверждения в боте..."}
+                      </span>
                     </div>
                     <button
                       type="button"

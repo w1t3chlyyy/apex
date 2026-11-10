@@ -10,6 +10,27 @@ cp .env.example .env.local   # заполните переменные
 npm run dev
 ```
 
+## Вход через Telegram-бота
+
+В production задайте в Vercel:
+
+- `TELEGRAM_SERVICE_BOT_TOKEN` — токен служебного бота.
+- `TELEGRAM_WEBHOOK_SECRET` — случайный секрет из символов `A-Z`, `a-z`, `0-9`, `_` и `-`.
+- `SESSION_SECRET` — случайный секрет для подписи сессий. Создайте командой `openssl rand -hex 32`.
+- `NEXT_PUBLIC_SUPABASE_URL` и `SUPABASE_SERVICE_ROLE_KEY` — постоянное хранилище Telegram-сессий.
+- `TELEGRAM_BOT_USERNAME` — username того же служебного бота, без `@`.
+
+Установите вебхук служебного бота на этот Next.js-сайт, а не на FastAPI-сервис:
+
+```bash
+curl -X POST "https://api.telegram.org/bot${TELEGRAM_SERVICE_BOT_TOKEN}/setWebhook" \
+  -d "url=${NEXT_PUBLIC_SITE_URL}/api/bot/webhook" \
+  -d "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
+  -d 'allowed_updates=["message","callback_query"]'
+```
+
+`TELEGRAM_WEBHOOK_SECRET` должен совпадать с `secret_token` вебхука. Не направляйте служебного бота на `/webhook/service` FastAPI-сервиса: обработчик входа находится в `app/api/bot/webhook`.
+
 ## Структура
 
 - `app/page.tsx` — лендинг с демо-чатом (лимит 5 сообщений/сессию, хранится в localStorage)
